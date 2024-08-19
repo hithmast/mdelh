@@ -40,7 +40,7 @@ To obtain the API key required to run the script, follow these steps:
 3. **Run the Script**: Execute the script by running:
 
 ```bash
-python MDELH.py
+python mdelh.py
 ```
 
 ## Functions
