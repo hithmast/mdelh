@@ -97,6 +97,15 @@ This example demonstrates how to use the script:
 - Ensure your API token has the necessary permissions to query the MDE API.
 - This script is intended for educational purposes. Use it responsibly, especially when handling sensitive data.
 
+Here's the section for the `README.md` file:
+
+---
+
+## Future Updates
+
+- **CSV Output**: Implement functionality to write query results to a CSV file for easier data management and analysis.
+- **Logging**: Add comprehensive logging to capture output details and errors, providing better traceability and debugging capabilities.
+  
 ## License
 
 This script is provided under the MIT License. See `LICENSE` for details.
