@@ -97,6 +97,21 @@ These limits are enforced to ensure compliance with API usage policies and to pr
 - **CSV Output**: Implement functionality to write query results to a CSV file for easier data management and analysis.
 - **Logging**: Add comprehensive logging to capture output details and errors, providing better traceability and debugging capabilities.
 
+## Limitations
+
+- **Query Timeframe**: You can only run a query on data from the last 30 days.
+
+- **Result Size**: The results include a maximum of 100,000 rows.
+
+- **Execution Limits**:
+  - **API Calls**: Up to 45 calls per minute, and up to 1,500 calls per hour.
+  - **Execution Time**: 10 minutes of running time every hour and 3 hours of running time a day.
+  - The maximal execution time of a single request is 200 seconds.
+
+- **429 Response**: A 429 response indicates that the quota limit has been reached, either by the number of requests or by CPU usage. Check the response body to understand which limit was exceeded.
+
+- **Query Result Size**: The maximum query result size of a single request cannot exceed 124 MB. If exceeded, an HTTP 400 Bad Request will be returned with the message "Query execution has exceeded the allowed result size. Optimize your query by limiting the number of results and try again."
+
 ## License
 
 This script is provided under the MIT License. See `LICENSE` for details.
