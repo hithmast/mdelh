@@ -78,17 +78,14 @@ def query_mde(api_token, query):
 
     try:
         response = requests.post(API_URL, headers=headers, json=query_data)
-        if response.status_code == 429:
-            # Handle rate limiting with exponential backoff
-            retry_after = int(response.headers.get('Retry-After', 1))  # Default to 1 second if not provided
-            logging.warning(f"Rate limit exceeded. Retrying after {retry_after} seconds.")
-            time.sleep(retry_after)
-            return query_mde(api_token, query)
         response.raise_for_status()  # Raise an exception for error HTTP status codes
         calls_made += 1
         return response.json()
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error querying MDE: {e}")
+        if isinstance(e, requests.exceptions.ConnectionError) or isinstance(e, requests.exceptions.Timeout):
+            logging.error(f"Network Error: {e}")
+        else:
+            logging.error(f"Error querying MDE: {e}")
         return None
 
 def process_items(items, api_token, max_workers=10, backoff_time=1):
@@ -169,7 +166,7 @@ def handle_interrupt(signum, frame):
 def main():
     signal.signal(signal.SIGINT, handle_interrupt)
     
-    api_token = "YOU_API_TOKEN"
+    api_token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IktRMnRBY3JFN2xCYVZWR0JtYzVGb2JnZEpvNCIsImtpZCI6IktRMnRBY3JFN2xCYVZWR0JtYzVGb2JnZEpvNCJ9.eyJhdWQiOiJodHRwczovL3NlY3VyaXR5Y2VudGVyLm1pY3Jvc29mdC5jb20vbXRwIiwiaXNzIjoiaHR0cHM6Ly9zdHMud2luZG93cy5uZXQvNDkxMzEzNmItYTYzMS00MjlmLTg2NDctYjIyMTE3NDQ5MjMxLyIsImlhdCI6MTcyNDAzNTc3NywibmJmIjoxNzI0MDM1Nzc3LCJleHAiOjE3MjQwNDEwNTIsImFjciI6IjEiLCJhaW8iOiJBVFFBeS84WEFBQUFVZVpGaDVaSzhrSlFsQS9KVmZhS2gyS1I2Y0FlaGR4WmpRNDNKclU1Q0phVzAzbm9ydVNEcFhPTm9lQzlPWmdJIiwiYW1yIjpbInB3ZCJdLCJhcHBfZGlzcGxheW5hbWUiOiJNaWNyb3NvZnQgMzY1IFNlY3VyaXR5IGFuZCBDb21wbGlhbmNlIENlbnRlciIsImFwcGlkIjoiODBjY2NhNjctNTRiZC00NGFiLTg2MjUtNGI3OWM0ZGM3Nzc1IiwiYXBwaWRhY3IiOiIyIiwiZmFtaWx5X25hbWUiOiJlenphdCIsImdpdmVuX25hbWUiOiJhbHkiLCJpZHR5cCI6InVzZXIiLCJpcGFkZHIiOiIxOTYuMjE5LjM5LjUwIiwibmFtZSI6ImFseSBlenphdCBtYWhtb3VkIGVtYXJhIiwib2lkIjoiM2Q1ZDMzYzQtY2JjNi00YjhmLTkxYzEtMjY0ZTg4MzFlMjdmIiwib25wcmVtX3NpZCI6IlMtMS01LTIxLTExOTM3NTYyMTItNDI0NzI0NDkwNy0zMTAwMDMxMDU4LTE1OTIzNCIsInB1aWQiOiIxMDAzMjAwMzZBNzFGRDE0IiwicmgiOiIwLkFRd0FheE1UU1RHbW4wS0dSN0loRjBTU01XVUVlUHdYSU5SQW9NVXdjQ0pIRzVJTUFENC4iLCJzY3AiOiJ1c2VyX2ltcGVyc29uYXRpb24iLCJzdWIiOiJ1RDBiRmtyRkMyWnU2bTRudk5ZeHFhdk8tM20wN3FHMGZwTDhxbGk2UHowIiwidGVuYW50X3JlZ2lvbl9zY29wZSI6IkFGIiwidGlkIjoiNDkxMzEzNmItYTYzMS00MjlmLTg2NDctYjIyMTE3NDQ5MjMxIiwidW5pcXVlX25hbWUiOiJpdHMuYWxpLmVtYXJhQHRlLmVnIiwidXBuIjoiaXRzLmFsaS5lbWFyYUB0ZS5lZyIsInV0aSI6Il9KQmZwQ2YwdjA2enFLSW5wS05LQUEiLCJ2ZXIiOiIxLjAiLCJ3aWRzIjpbImYyZWY5OTJjLTNhZmItNDZiOS1iN2NmLWExMjZlZTc0YzQ1MSIsImI3OWZiZjRkLTNlZjktNDY4OS04MTQzLTc2YjE5NGU4NTUwOSJdLCJ4bXNfaWRyZWwiOiIxIDIyIn0.ubvmOtCoHi-A6mR0t_H94rXcyTJk1et6EutMzu7L8b8cF9XkUOdoRcvOqAUcY70hW0NrSgkDHy6cDPAwdXG_oJtGcdOUoGF2a26log5ORTWuL3I9RZJKuOPuvcTkTUmFQyEND23QJSIBWhVlbWr9GsvVK38SPzxiEYFnyd3i1Ps4du-dTxv5dVRH7YiX9610y1Ayc_A_O_ac2QlwtPPDVN6SzOaSvh8xRvvYOopfeQB2ngGM3_RA9PIVY4WO8qtdfPjATiVjuwqZIMvAY4p_uSVTrD2kkq4aaYZI5e-9MGHMjdow-FybE9XWnDy9CFuMro7x3-71Z9vqmfJE5wxOeQ"
     IOCs_file = "IOCs.txt"
 
     # Read items from file
