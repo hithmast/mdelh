@@ -92,14 +92,18 @@ This example demonstrates how to use the script:
 - The script logs any errors encountered during API queries or result processing using Python's `logging` module.
 - If an error occurs during processing, the script will wait for a specified backoff time before retrying.
 
+## Rate Limits
+
+The script adheres to the following API rate limits:
+
+- **Up to 45 calls per minute**: The script will automatically pause if this limit is reached within a minute.
+- **Up to 1,500 calls per hour**: The script will automatically pause if this limit is reached within an hour.
+
+These limits are enforced to ensure compliance with API usage policies and to prevent overloading the service.
 ## Notes
 
 - Ensure your API token has the necessary permissions to query the MDE API.
 - This script is intended for educational purposes. Use it responsibly, especially when handling sensitive data.
-
-Here's the section for the `README.md` file:
-
----
 
 ## Future Updates
 
