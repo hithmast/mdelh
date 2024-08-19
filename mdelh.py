@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 import re
 from dateutil.parser import parse
 import pytz
+import signal
+import sys
 
 API_URL = "https://api.securitycenter.microsoft.com/api/advancedqueries/run"
 
@@ -89,6 +91,23 @@ def query_mde(api_token, query):
         logging.error(f"Error querying MDE: {e}")
         return None
 
+def process_items(items, api_token, max_workers=10, backoff_time=1):
+    def build_query(item):
+        if is_sha256(item):
+            query = f"DeviceFileEvents | where SHA256 == '{item}'| limit 10 "
+        elif is_sha1(item):
+            query = f"DeviceFileEvents | where SHA1 == '{item}'| limit 10 "
+        elif is_md5(item):
+            query = f"DeviceFileEvents | where MD5 == '{item}'| limit 10 "
+        elif is_ipv4(item):
+            query = f"DeviceNetworkEvents | where RemoteIP == '{item}'| limit 10 "
+        elif is_url(item):
+            query = f"DeviceNetworkEvents | where RemoteUrl contains '{item}'| limit 10 "
+        else:
+            logging.warning(f"Invalid item format: {item}")
+            return None
+        return query
+
 def process_items(items, api_token, max_workers=1, backoff_time=1):
     def build_query(item):
         if is_sha256(item):
@@ -111,22 +130,25 @@ def process_items(items, api_token, max_workers=1, backoff_time=1):
         if query:
             result = query_mde(api_token, query)
             if result:
-                for item in result.get("Results", []):
-                    output_data = {
-                        "Timestamp": convert_to_cairo_time(item.get("Timestamp", "")),
-                        "DeviceName": item.get("DeviceName", ""),
-                        "DeviceId": item.get("DeviceId", ""),
-                        "RemoteIP": item.get("RemoteIP", ""),
-                        "RemoteUrl": item.get("RemoteUrl", ""),
-                        "FileName": item.get("FileName", ""),
-                        "FilePath": item.get("FilePath", ""),
-                        "FileSize": item.get("FileSize", ""),
-                        "SHA256": item.get("SHA256", ""),
-                        "SHA1": item.get("SHA1", ""),
-                        "FileType": item.get("FileType", "")
-                    }
-                    output_str = ", ".join(f"{key}: {value}" for key, value in output_data.items() if value)
-                    print(output_str)
+                if "Results" in result and result["Results"]:
+                    for item in result["Results"]:
+                        output_data = {
+                            "Timestamp": convert_to_cairo_time(item.get("Timestamp", "")),
+                            "DeviceName": item.get("DeviceName", ""),
+                            "DeviceId": item.get("DeviceId", ""),
+                            "RemoteIP": item.get("RemoteIP", ""),
+                            "RemoteUrl": item.get("RemoteUrl", ""),
+                            "FileName": item.get("FileName", ""),
+                            "FilePath": item.get("FilePath", ""),
+                            "FileSize": item.get("FileSize", ""),
+                            "SHA256": item.get("SHA256", ""),
+                            "SHA1": item.get("SHA1", ""),
+                            "FileType": item.get("FileType", "")
+                        }
+                        output_str = ", ".join(f"{key}: {value}" for key, value in output_data.items() if value)
+                        print(output_str)
+                else:
+                    logging.info(f"No results found for query: {query}")
             else:
                 logging.error(f"No result returned for query: {query}")
 
@@ -140,15 +162,27 @@ def process_items(items, api_token, max_workers=1, backoff_time=1):
                 logging.error(f"Error processing result: {e}")
                 time.sleep(backoff_time)
 
+def handle_interrupt(signum, frame):
+    logging.info("Script interrupted by user. Exiting...")
+    sys.exit(0)
+
 def main():
-    api_token = "YOUR_API_TOKEN_HERE"
+    signal.signal(signal.SIGINT, handle_interrupt)
+    
+    api_token = "YOU_API_TOKEN"
     IOCs_file = "IOCs.txt"
 
     # Read items from file
     with open(IOCs_file, 'r') as file:
         hashes = [line.strip() for line in file]
 
-    process_items(hashes, api_token)
+    try:
+        process_items(hashes, api_token)
+    except KeyboardInterrupt:
+        logging.info("Script interrupted by user.")
+    finally:
+        logging.info("Script finished or exited.")
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     main()
