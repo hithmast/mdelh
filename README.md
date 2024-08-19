@@ -8,7 +8,8 @@ The MDE Lazy Hunter Script interacts with the Microsoft Defender for Endpoint (M
 - **Timestamp Conversion**: Converts UTC timestamps to Cairo local time.
 - **Input Validation**: Supports validation for SHA256, SHA1, MD5, IPv4 addresses, URLs, and domains.
 - **Asynchronous Processing**: Uses multi-threading to process multiple queries concurrently.
-
+- **Rate Limiting**: Adheres to API rate limits of up to 45 calls per minute and up to 1,500 calls per hour to ensure compliance and prevent overloading the service.
+  
 ## Prerequisites
 
 - Python 3.6 or higher
