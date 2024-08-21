@@ -10,6 +10,7 @@ import signal
 import sys
 import os
 import csv
+import ipaddress
 
 API_URL = "https://api.securitycenter.microsoft.com/api/advancedqueries/run"
 
@@ -27,7 +28,8 @@ query_counts = {
     "SHA1": 0,
     "MD5": 0,
     "RemoteIP": 0,
-    "RemoteUrl": 0
+    "RemoteUrl": 0,
+    "LocalIP": 0
 }
 
 def convert_to_cairo_time(timestamp_str):
@@ -52,11 +54,20 @@ def is_md5(value):
 
 def is_ipv4(value):
     try:
-        import ipaddress
-        return isinstance(ipaddress.ip_address(value), ipaddress.IPv4Address)
+        ip = ipaddress.ip_address(value)
+        # Check if it's an IPv4 address and not a private IP
+        return isinstance(ip, ipaddress.IPv4Address) and not ip.is_private
     except ValueError:
         return False
 
+def is_private_ipv4(value):
+    try:
+        ip = ipaddress.ip_address(value)
+        # Check if it's an IPv4 address and is private
+        return isinstance(ip, ipaddress.IPv4Address) and ip.is_private
+    except ValueError:
+        return False
+    
 def is_url(value):
     return bool(re.match(
         r'^(https?|ftp):\/\/'
@@ -86,6 +97,7 @@ def query_mde(api_token, query, retries=5, backoff_factor=5):
 
     current_time = time.time()
 
+    # Check the minute rate limit
     if calls_made >= MAX_CALLS_PER_MINUTE:
         elapsed_time_minute = current_time - start_time_minute
         if elapsed_time_minute < 60:
@@ -93,6 +105,7 @@ def query_mde(api_token, query, retries=5, backoff_factor=5):
         start_time_minute = time.time()
         calls_made = 0
 
+    # Check the hourly rate limit
     if calls_made >= MAX_CALLS_PER_HOUR:
         elapsed_time_hour = current_time - start_time_hour
         if elapsed_time_hour < 3600:
@@ -103,29 +116,35 @@ def query_mde(api_token, query, retries=5, backoff_factor=5):
     for attempt in range(retries):
         try:
             response = requests.post(API_URL, headers=headers, json=query_data)
-            response.raise_for_status()
+            response.raise_for_status()  # Raise an exception for error HTTP status codes
+            if response.status_code == 401:
+                print("API Key Is Deprecated. Add a new one to the config.json file.")
+                sys.exit(1)  # Exit the script
             calls_made += 1
             return response.json()
         except requests.exceptions.RequestException as e:
+            logging.error(f"Error querying MDE: {e}")
             if response and response.status_code == 429:
                 wait_time = backoff_factor * (attempt + 1)
-                logging.error(f"Error querying MDE: {e}. Retrying in {wait_time} seconds...")
+                logging.error(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
             else:
-                logging.error(f"Error querying MDE: {e}")
                 break
 
     logging.error(f"No result returned for query: {query}")
     return None
 
+
 def process_items(items, api_token, max_workers=10, backoff_time=1):
     query_count = 0
+    critical_error_occurred = False
     query_mapping = {
         "SHA256": lambda item: f"DeviceFileEvents | where SHA256 == '{item}'| limit 10",
         "SHA1":   lambda item: f"DeviceFileEvents | where SHA1 == '{item}'| limit 10",
         "MD5":    lambda item: f"DeviceFileEvents | where MD5 == '{item}'| limit 10",
         "RemoteIP": lambda item: f"DeviceNetworkEvents | where RemoteIP == '{item}'| limit 10",
-        "RemoteUrl": lambda item: f"DeviceNetworkEvents | where RemoteUrl contains '{item}'| limit 10"
+        "RemoteUrl": lambda item: f"DeviceNetworkEvents | where RemoteUrl contains '{item}'| limit 10",
+        "LocalIP": lambda item: f"DeviceNetworkEvents | where LocalIP contains '{item}'| limit 10"
     }
 
     results_folder = "results"
@@ -145,6 +164,9 @@ def process_items(items, api_token, max_workers=10, backoff_time=1):
         elif is_ipv4(item):
             query_counts["RemoteIP"] += 1
             return query_mapping["RemoteIP"](item)
+        elif is_private_ipv4(item):
+            query_counts["LocalIP"] += 1
+            return query_mapping["LocalIP"](item)
         elif is_url(item) or is_hostname(item):
             query_counts["RemoteUrl"] += 1
             return query_mapping["RemoteUrl"](item)
@@ -153,22 +175,26 @@ def process_items(items, api_token, max_workers=10, backoff_time=1):
             return None
 
     def process_item(item):
-        nonlocal query_count
+        nonlocal query_count, critical_error_occurred
+        if critical_error_occurred:
+            return
+        
         query = get_query(item)
         if not query:
             return
         
         query_count += 1
         result = query_mde(api_token, query)
-        if not result:
-            logging.error(f"No result returned for query: {query}")
+        if result is None:
+            logging.error(f"Failed to get result for query: {query}. Stopping further processing.")
+            critical_error_occurred = True
             return
 
         if "Results" in result and result["Results"]:
             with open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
                 fieldnames = [
                     "Timestamp", "DeviceName", "DeviceId", "RemoteIP", "RemoteUrl",
-                    "FileName", "FolderPath", "FileSize", "SHA256", "SHA1", "FileType"
+                    "FileName", "FolderPath", "FileSize", "SHA256", "SHA1", "FileType", "LocalIP"
                 ]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
@@ -188,7 +214,8 @@ def process_items(items, api_token, max_workers=10, backoff_time=1):
                         "FileSize": res_item.get("FileSize", ""),
                         "SHA256": res_item.get("SHA256", ""),
                         "SHA1": res_item.get("SHA1", ""),
-                        "FileType": res_item.get("FileType", "")
+                        "FileType": res_item.get("FileType", ""),
+                        "LocalIP": res_item.get("LocalIP", "")
                     }
                     writer.writerow(output_data)
         else:
@@ -202,9 +229,17 @@ def process_items(items, api_token, max_workers=10, backoff_time=1):
         for future in futures:
             try:
                 future.result()
+                if critical_error_occurred:
+                    break
             except Exception as e:
                 logging.error(f"Error processing result: {e}")
                 time.sleep(backoff_time)
+
+        if critical_error_occurred:
+            logging.info("Critical error occurred. Cancelling remaining tasks.")
+            for future in futures:
+                future.cancel()  # Try to cancel all remaining tasks
+            executor.shutdown(wait=False)  # Shutdown the executor immediately
 
     # Log the number of queries for each type
     for query_type, count in query_counts.items():
