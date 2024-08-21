@@ -1,14 +1,15 @@
 ## Overview
 
-The MDE Lazy Hunter Script interacts with the Microsoft Defender for Endpoint (MDE) API, allowing users to query the service for various types of data. It supports six types of inputs: URLs, IP addresses, domains, and file hashes (SHA256, SHA1, MD5). Results are processed asynchronously, with timestamps converted to Cairo time, and displayed in a structured format.
+The MDE Lazy Hunter Script interacts with the Microsoft Defender for Endpoint (MDE) API, enabling users to query the service for various types of data. It supports six types of inputs: URLs, IP addresses, domains, and file hashes (SHA256, SHA1, MD5). Results are processed asynchronously, timestamps are converted to Cairo time, and output can be saved to a CSV file.
 
 ## Features
 
 - **MDE Querying**: Queries the Microsoft Defender for Endpoint API using provided KQL queries.
 - **Timestamp Conversion**: Converts UTC timestamps to Cairo local time.
 - **Input Validation**: Validates SHA256, SHA1, MD5, IPv4 addresses, URLs, and domains.
-- **Asynchronous Processing**: Uses multi-threading to process multiple queries concurrently.
+- **Asynchronous Processing**: Utilizes multi-threading to process multiple queries concurrently.
 - **Rate Limiting**: Adheres to API rate limits of up to 45 calls per minute and up to 1,500 calls per hour to ensure compliance and prevent overloading the service.
+- **CSV Output**: Results are saved to a CSV file in the `results` folder if any results are obtained.
 
 ## Prerequisites
 
@@ -17,6 +18,7 @@ The MDE Lazy Hunter Script interacts with the Microsoft Defender for Endpoint (M
 - `dateutil` library
 - `pytz` library
 - `concurrent.futures` for threading support
+- `csv` library (included in Python standard library)
 
 Install the required libraries using:
 
@@ -49,9 +51,9 @@ To obtain the API key required to run the script, follow these steps:
 - `is_sha256(value)`, `is_sha1(value)`, `is_md5(value)`: Validates whether a string is a valid SHA256, SHA1, or MD5 hash, respectively.
 - `is_ipv4(value)`: Validates whether a string is a valid IPv4 address.
 - `is_url(value)`: Performs basic URL validation.
-- `is_domain(value)`: Performs basic domain validation using regex.
+- `is_hostname(value)`: Validates a hostname based on standard DNS rules.
 - `query_mde(api_token, query)`: Sends a query to the MDE API and returns the JSON response.
-- `process_items(items, api_token, max_workers=10, backoff_time=1)`: Processes a list of items asynchronously, queries the MDE API, and outputs the results.
+- `process_items(items, api_token, max_workers=10, backoff_time=1)`: Processes a list of items asynchronously, queries the MDE API, and outputs the results to both the console and a CSV file.
 
 ## Example
 
@@ -71,7 +73,7 @@ This example demonstrates how to use the script:
    python mdelh.py
    ```
 
-**Expected Output**: The script will output results from the MDE API, with timestamps converted to Cairo time.
+**Expected Output**: The script will output results from the MDE API to both the console and a CSV file in the `results` folder, with timestamps converted to Cairo time.
 
 ## Logging and Error Handling
 
@@ -94,22 +96,18 @@ These limits are enforced to ensure compliance with API usage policies and to pr
 
 ## Future Updates
 
-- **CSV Output**: Implement functionality to write query results to a CSV file for easier data management and analysis.
-- **Logging**: Add comprehensive logging to capture output details and errors, providing better traceability and debugging capabilities.
+- **Enhanced CSV Output**: Implement functionality to include additional fields and data validation in the CSV output.
+- **Improved Logging**: Add comprehensive logging to capture output details and errors, providing better traceability and debugging capabilities.
 
 ## Limitations
 
 - **Query Timeframe**: You can only run a query on data from the last 30 days.
-
 - **Result Size**: The results include a maximum of 100,000 rows.
-
 - **Execution Limits**:
   - **API Calls**: Up to 45 calls per minute, and up to 1,500 calls per hour.
   - **Execution Time**: 10 minutes of running time every hour and 3 hours of running time a day.
   - The maximal execution time of a single request is 200 seconds.
-
 - **429 Response**: A 429 response indicates that the quota limit has been reached, either by the number of requests or by CPU usage. Check the response body to understand which limit was exceeded.
-
 - **Query Result Size**: The maximum query result size of a single request cannot exceed 124 MB. If exceeded, an HTTP 400 Bad Request will be returned with the message "Query execution has exceeded the allowed result size. Optimize your query by limiting the number of results and try again."
 
 ## License
