@@ -109,7 +109,3 @@ These limits are enforced to ensure compliance with API usage policies and to pr
   - The maximal execution time of a single request is 200 seconds.
 - **429 Response**: A 429 response indicates that the quota limit has been reached, either by the number of requests or by CPU usage. Check the response body to understand which limit was exceeded.
 - **Query Result Size**: The maximum query result size of a single request cannot exceed 124 MB. If exceeded, an HTTP 400 Bad Request will be returned with the message "Query execution has exceeded the allowed result size. Optimize your query by limiting the number of results and try again."
-
-## License
-
-This script is provided under the MIT License. See `LICENSE` for details.
