@@ -1,8 +1,8 @@
 import json
-import requests
+import aiohttp
+import asyncio
 import time
 import logging
-from concurrent.futures import ThreadPoolExecutor
 import re
 from dateutil.parser import parse
 import pytz
@@ -11,6 +11,7 @@ import sys
 import os
 import csv
 import ipaddress
+import aiofiles
 
 API_URL = "https://api.securitycenter.microsoft.com/api/advancedqueries/run"
 
@@ -85,7 +86,7 @@ def is_hostname(value):
     allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
     return all(allowed.match(x) for x in value.split("."))
 
-def query_mde(api_token, query, retries=5, backoff_factor=5):
+async def query_mde(session, api_token, query, retries=5, backoff_factor=5):
     global calls_made, start_time_minute, start_time_hour
 
     headers = {
@@ -101,7 +102,7 @@ def query_mde(api_token, query, retries=5, backoff_factor=5):
     if calls_made >= MAX_CALLS_PER_MINUTE:
         elapsed_time_minute = current_time - start_time_minute
         if elapsed_time_minute < 60:
-            time.sleep(60 - elapsed_time_minute)
+            await asyncio.sleep(60 - elapsed_time_minute)
         start_time_minute = time.time()
         calls_made = 0
 
@@ -109,42 +110,72 @@ def query_mde(api_token, query, retries=5, backoff_factor=5):
     if calls_made >= MAX_CALLS_PER_HOUR:
         elapsed_time_hour = current_time - start_time_hour
         if elapsed_time_hour < 3600:
-            time.sleep(3600 - elapsed_time_hour)
+            await asyncio.sleep(3600 - elapsed_time_hour)
         start_time_hour = time.time()
         calls_made = 0
 
     for attempt in range(retries):
         try:
-            response = requests.post(API_URL, headers=headers, json=query_data)
-            response.raise_for_status()  # Raise an exception for error HTTP status codes
-            if response.status_code == 401:
-                print("API Key Is Deprecated. Add a new one to the config.json file.")
-                sys.exit(1)  # Exit the script
-            calls_made += 1
-            return response.json()
-        except requests.exceptions.RequestException as e:
+            async with session.post(API_URL, headers=headers, json=query_data) as response:
+                if response.status == 401:
+                    print("API Key Is Deprecated. Add a new one to the config.json file.")
+                    sys.exit(1)  # Exit the script
+                response.raise_for_status()
+                calls_made += 1
+                return await response.json()
+        except aiohttp.ClientError as e:
             logging.error(f"Error querying MDE: {e}")
-            if response and response.status_code == 429:
+            if response.status == 429:
                 wait_time = backoff_factor * (attempt + 1)
                 logging.error(f"Retrying in {wait_time} seconds...")
-                time.sleep(wait_time)
+                await asyncio.sleep(wait_time)
             else:
                 break
 
     logging.error(f"No result returned for query: {query}")
     return None
 
-
-def process_items(items, api_token, max_workers=10, backoff_time=1):
+async def process_items(items, api_token):
     query_count = 0
     critical_error_occurred = False
+    
     query_mapping = {
-        "SHA256": lambda item: f"DeviceFileEvents | where SHA256 == '{item}'| limit 10",
-        "SHA1":   lambda item: f"DeviceFileEvents | where SHA1 == '{item}'| limit 10",
-        "MD5":    lambda item: f"DeviceFileEvents | where MD5 == '{item}'| limit 10",
-        "RemoteIP": lambda item: f"DeviceNetworkEvents | where RemoteIP == '{item}'| limit 10",
-        "RemoteUrl": lambda item: f"DeviceNetworkEvents | where RemoteUrl contains '{item}'| limit 10",
-        "LocalIP": lambda item: f"DeviceNetworkEvents | where LocalIP contains '{item}'| limit 10"
+        "SHA256": lambda item: f"""
+            DeviceFileEvents
+            | where SHA256 == '{item}'
+            | project Timestamp, DeviceName, DeviceId, FileName, FolderPath, FileSize, SHA256, SHA1, MD5, InitiatingProcessFileName, InitiatingProcessCommandLine
+            | limit 100
+        """,
+        "SHA1": lambda item: f"""
+            DeviceFileEvents
+            | where SHA1 == '{item}'
+            | project Timestamp, DeviceName, DeviceId, FileName, FolderPath, FileSize, SHA256, SHA1, MD5, InitiatingProcessFileName, InitiatingProcessCommandLine
+            | limit 100
+        """,
+        "MD5": lambda item: f"""
+            DeviceFileEvents
+            | where MD5 == '{item}'
+            | project Timestamp, DeviceName, DeviceId, FileName, FolderPath, FileSize, SHA256, SHA1, MD5, InitiatingProcessFileName, InitiatingProcessCommandLine
+            | limit 100
+        """,
+        "RemoteIP": lambda item: f"""
+            DeviceNetworkEvents
+            | where RemoteIP == '{item}'
+            | project Timestamp, DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemotePort, RemoteUrl, LocalIP, LocalPort, Protocol
+            | limit 100
+        """,
+        "RemoteUrl": lambda item: f"""
+            DeviceNetworkEvents
+            | where RemoteUrl contains '{item}'
+            | project Timestamp, DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemotePort, RemoteUrl, LocalIP, LocalPort, Protocol
+            | limit 100
+        """,
+        "LocalIP": lambda item: f"""
+            DeviceNetworkEvents
+            | where LocalIP == '{item}'
+            | project Timestamp, DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemotePort, RemoteUrl, LocalIP, LocalPort, Protocol
+            | limit 100
+        """
     }
 
     results_folder = "results"
@@ -174,7 +205,7 @@ def process_items(items, api_token, max_workers=10, backoff_time=1):
             logging.warning(f"Invalid item format: {item}")
             return None
 
-    def process_item(item):
+    async def process_item(session, item):
         nonlocal query_count, critical_error_occurred
         if critical_error_occurred:
             return
@@ -184,14 +215,14 @@ def process_items(items, api_token, max_workers=10, backoff_time=1):
             return
         
         query_count += 1
-        result = query_mde(api_token, query)
+        result = await query_mde(session, api_token, query)
         if result is None:
             logging.error(f"Failed to get result for query: {query}. Stopping further processing.")
             critical_error_occurred = True
             return
 
         if "Results" in result and result["Results"]:
-            with open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
+            async with aiofiles.open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
                 fieldnames = [
                     "Timestamp", "DeviceName", "DeviceId", "RemoteIP", "RemoteUrl",
                     "FileName", "FolderPath", "FileSize", "SHA256", "SHA1", "FileType", "LocalIP"
@@ -200,7 +231,7 @@ def process_items(items, api_token, max_workers=10, backoff_time=1):
 
                 # Write header if the file is empty
                 if csvfile.tell() == 0:
-                    writer.writeheader()
+                    await writer.writeheader()
 
                 for res_item in result["Results"]:
                     output_data = {
@@ -217,29 +248,15 @@ def process_items(items, api_token, max_workers=10, backoff_time=1):
                         "FileType": res_item.get("FileType", ""),
                         "LocalIP": res_item.get("LocalIP", "")
                     }
-                    writer.writerow(output_data)
+                    await writer.writerow(output_data)
         else:
             logging.info(f"No results found for query: {query}")
 
     start_time = time.time()
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(process_item, item) for item in items]
-
-        for future in futures:
-            try:
-                future.result()
-                if critical_error_occurred:
-                    break
-            except Exception as e:
-                logging.error(f"Error processing result: {e}")
-                time.sleep(backoff_time)
-
-        if critical_error_occurred:
-            logging.info("Critical error occurred. Cancelling remaining tasks.")
-            for future in futures:
-                future.cancel()  # Try to cancel all remaining tasks
-            executor.shutdown(wait=False)  # Shutdown the executor immediately
+    async with aiohttp.ClientSession() as session:
+        for item in items:
+            await process_item(session, item)
 
     # Log the number of queries for each type
     for query_type, count in query_counts.items():
@@ -253,7 +270,7 @@ def handle_interrupt(signum, frame):
     logging.info("Script interrupted by user. Exiting...")
     sys.exit(0)
 
-def main():
+async def main():
     signal.signal(signal.SIGINT, handle_interrupt)
     
     # Load API key from configuration file
@@ -271,7 +288,7 @@ def main():
         hashes = [line.strip() for line in file]
 
     try:
-        process_items(hashes, api_token)
+        await process_items(hashes, api_token)
     except KeyboardInterrupt:
         logging.info("Script interrupted by user.")
     finally:
@@ -279,4 +296,4 @@ def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    main()
+    asyncio.run(main())
