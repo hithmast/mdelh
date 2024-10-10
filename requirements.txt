@@ -1,11 +1,4 @@
-json
-requests
-time
-logging
-re
-pytz
-signal
-sys
-os
-csv
+aiohttp
+aiofiles
 python-dateutil
+pytz
