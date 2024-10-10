@@ -16,22 +16,23 @@ The **MDE Lazy Hunter** script interacts with the Microsoft Defender for Endpoin
 ## Prerequisites
 
 - Python 3.6 or higher
-- Required libraries: `requests`, `dateutil`, `pytz`
+- Required libraries: `aiohttp`, `dateutil`, `pytz`,`aiofiles`
 
 Install the required libraries using:
 
 ```bash
-pip install requests python-dateutil pytz
+pip install aiofiles aiohttp python-dateutil pytz
 ```
 
 ## Obtaining the API Key
+![image](https://github.com/user-attachments/assets/12161bc2-e34e-482e-8a8d-fde9ae76508d)
 
 To obtain the API key required for the script:
 
 1. Visit the [Microsoft Defender API Explorer](https://security.microsoft.com/interoperability/api-explorer).
 2. Open the Network inspection tool in your browser (e.g., press F12 and navigate to the "Network" tab).
 3. Run a query test in the API Explorer.
-4. Find the request made by the API Explorer and locate the authorization header.
+4. Find the request made search for 'token' by the API Explorer and locate the authorization header.
 5. Copy the API key (excluding the "Bearer" prefix) and add it to the `config.json` file.
 
 ## Configuration
