@@ -71,10 +71,16 @@ def is_private_ipv4(value):
     
 def is_url(value):
     return bool(re.match(
-        r'^(https?|ftp):\/\/'
-        r'([a-zA-Z0-9\-.]+(?:\.[a-zA-Z]{2,})+|'
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|'
-        r'\[?[a-fA-F0-9:]+\]?)$',
+        r'^(https?|ftp):\/\/'  # Scheme (http, https, ftp)
+        r'('
+        r'([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+\.[a-zA-Z]{2,}|'  # Domain name
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|'  # IP address
+        r'\[?[a-fA-F0-9:]+\]?'  # IPv6 address
+        r')'
+        r'(:\d+)?'  # Optional port
+        r'(\/[^?#\s]*)?'  # Optional path
+        r'(\?[^#\s]*)?'  # Optional query string
+        r'(#\S*)?$',  # Optional fragment
         value
     ))
 
