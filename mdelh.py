@@ -277,6 +277,7 @@ def handle_interrupt(signum, frame):
     sys.exit(0)
 
 async def main():
+    """ Main function that sets up the signal handler, loads API token from configuration file, reads IOCs file, and processes the items. """
     signal.signal(signal.SIGINT, handle_interrupt)
     # Load API key from configuration file
     def load_config(filename):
