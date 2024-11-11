@@ -272,7 +272,7 @@ async def process_items(items, api_token):
     logging.info(f"Total execution time: {total_time:.2f} seconds")
     logging.info(f"Total queries processed: {query_count}")
 
-def handle_interrupt(signum, frame):
+def handle_interrupt(signum):
     logging.info("Script interrupted by user. Exiting...")
     sys.exit(0)
 
