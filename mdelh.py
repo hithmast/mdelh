@@ -278,7 +278,6 @@ def handle_interrupt(signum, frame):
 
 async def main():
     signal.signal(signal.SIGINT, handle_interrupt)
-    
     # Load API key from configuration file
     def load_config(filename):
         with open(filename, 'r') as file:
