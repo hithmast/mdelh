@@ -202,6 +202,9 @@ async def process_items(items: list, api_token: str):
     csv_file_path = os.path.join(results_folder, "results.csv")
 
     def get_query(item: str) -> str:
+        if not item:  # Check if the item is an empty string
+            logging.warning("Received an empty item. Skipping...")
+            return None
         if is_sha256(item):
             query_counts["SHA256"] += 1
             return query_mapping["SHA256"](item)
@@ -247,11 +250,11 @@ async def process_items(items: list, api_token: str):
                     "FileName", "FolderPath", "FileSize", "SHA256", "SHA1", "FileType", "LocalIP"
                 ]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
+        
                 # Write header if the file is empty
                 if csvfile.tell() == 0:
-                    await writer.writeheader()
-
+                    writer.writeheader()  # Remove await
+        
                 for res_item in result["Results"]:
                     output_data = {
                         "Timestamp": convert_to_cairo_time(res_item.get("Timestamp", "")),
@@ -267,7 +270,7 @@ async def process_items(items: list, api_token: str):
                         "FileType": res_item.get("FileType", ""),
                         "LocalIP": res_item.get("LocalIP", "")
                     }
-                    await writer.writerow(output_data)
+                    writer.writerow(output_data)  # Remove await
         else:
             logging.info(f"No results found for query: {query}")
 
