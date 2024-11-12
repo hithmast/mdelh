@@ -156,7 +156,7 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
 
     logging.error(f"No result returned for query: {query}")
     return None
-
+    
 # Process items
 async def process_items(items: list, api_token: str):
     query_count = 0
@@ -167,37 +167,37 @@ async def process_items(items: list, api_token: str):
             DeviceFileEvents
             | where SHA256 == '{item}'
             | project Timestamp, DeviceName, DeviceId, FileName, FolderPath, FileSize, SHA256, SHA1, MD5, InitiatingProcessFileName, InitiatingProcessCommandLine
-            | limit 100
+            | limit 1000
         """,
         "SHA1": lambda item: f"""
             DeviceFileEvents
             | where SHA1 == '{item}'
             | project Timestamp, DeviceName, DeviceId, FileName, FolderPath, FileSize, SHA256, SHA1, MD5, InitiatingProcessFileName, InitiatingProcessCommandLine
-            | limit 100
+            | limit 1000
         """,
         "MD5": lambda item: f"""
             DeviceFileEvents
             | where MD5 == '{item}'
             | project Timestamp, DeviceName, DeviceId, FileName, FolderPath, FileSize, SHA256, SHA1, MD5, InitiatingProcessFileName, InitiatingProcessCommandLine
-            | limit 100
+            | limit 1000
         """,
         "RemoteIP": lambda item: f"""
             DeviceNetworkEvents
             | where RemoteIP == '{item}'
             | project Timestamp, DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemotePort, RemoteUrl, LocalIP, LocalPort, Protocol
-            | limit 100
+            | limit 1000
         """,
         "RemoteUrl": lambda item: f"""
             DeviceNetworkEvents
             | where RemoteUrl contains '{item}'
             | project Timestamp, DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemotePort, RemoteUrl, LocalIP, LocalPort, Protocol
-            | limit 100
+            | limit 1000
         """,
         "LocalIP": lambda item: f"""
             DeviceNetworkEvents
             | where LocalIP == '{item}'
             | project Timestamp, DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemotePort, RemoteUrl, LocalIP, LocalPort, Protocol
-            | limit 100
+            | limit 1000
         """
     }
 
