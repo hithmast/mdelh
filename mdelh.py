@@ -4,14 +4,14 @@ import asyncio
 import time
 import logging
 import re
-from dateutil.parser import parse
-import pytz
 import signal
 import sys
 import os
 import csv
 import ipaddress
 import aiofiles
+from dateutil.parser import parse
+import pytz
 
 API_URL = "https://api.securitycenter.microsoft.com/api/advancedqueries/run"
 
@@ -19,6 +19,7 @@ API_URL = "https://api.securitycenter.microsoft.com/api/advancedqueries/run"
 MAX_CALLS_PER_MINUTE = 45
 MAX_CALLS_PER_HOUR = 1500
 
+# Global variables for rate limiting
 calls_made = 0
 start_time_minute = time.time()
 start_time_hour = time.time()
@@ -33,43 +34,42 @@ query_counts = {
     "LocalIP": 0
 }
 
-def convert_to_cairo_time(timestamp_str):
+# Timezone conversion
+def convert_to_cairo_time(timestamp_str: str) -> str:
     try:
         utc_dt = parse(timestamp_str)
         cairo_tz = pytz.timezone('Africa/Cairo')
         cairo_dt = utc_dt.astimezone(cairo_tz)
-        cairo_dt_str = str(cairo_dt).split('.')[0]
-        return f"{cairo_dt_str}"
+        return cairo_dt.strftime("%Y-%m-%d %H:%M:%S")
     except ValueError as e:
         logging.error(f"Error converting timestamp: {timestamp_str}, Error: {e}")
-        return None
+        return ""
 
-def is_sha256(value):
+# Validation functions
+def is_sha256(value: str) -> bool:
     return len(value) == 64 and set(value.lower()).issubset("0123456789abcdef")
 
-def is_sha1(value):
+def is_sha1(value: str) -> bool:
     return len(value) == 40 and set(value.lower()).issubset("0123456789abcdef")
 
-def is_md5(value):
+def is_md5(value: str) -> bool:
     return len(value) == 32 and set(value.lower()).issubset("0123456789abcdef")
 
-def is_ipv4(value):
+def is_ipv4(value: str) -> bool:
     try:
         ip = ipaddress.ip_address(value)
-        # Check if it's an IPv4 address and not a private IP
         return isinstance(ip, ipaddress.IPv4Address) and not ip.is_private
     except ValueError:
         return False
 
-def is_private_ipv4(value):
+def is_private_ipv4(value: str) -> bool:
     try:
         ip = ipaddress.ip_address(value)
-        # Check if it's an IPv4 address and is private
         return isinstance(ip, ipaddress.IPv4Address) and ip.is_private
     except ValueError:
         return False
     
-def is_url(value):
+def is_url(value: str) -> bool:
     return bool(re.match(
         r'^(https?|ftp):\/\/'  # Scheme (http, https, ftp)
         r'('
@@ -84,7 +84,7 @@ def is_url(value):
         value
     ))
 
-def is_hostname(value):
+def is_hostname(value: str) -> bool:
     if len(value) > 255:
         return False
     if value[-1] == ".":
@@ -92,7 +92,8 @@ def is_hostname(value):
     allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
     return all(allowed.match(x) for x in value.split("."))
 
-async def query_mde(session, api_token, query, retries=5, backoff_factor=5):
+# Query MDE
+async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, retries: int = 5, backoff_factor: int = 5) -> dict:
     global calls_made, start_time_minute, start_time_hour
 
     headers = {
@@ -101,10 +102,9 @@ async def query_mde(session, api_token, query, retries=5, backoff_factor=5):
     }
 
     query_data = {"Query": query}
-
     current_time = time.time()
 
-    # Check the minute rate limit
+    # Rate limit checks
     if calls_made >= MAX_CALLS_PER_MINUTE:
         elapsed_time_minute = current_time - start_time_minute
         if elapsed_time_minute < 60:
@@ -112,7 +112,6 @@ async def query_mde(session, api_token, query, retries=5, backoff_factor=5):
         start_time_minute = time.time()
         calls_made = 0
 
-    # Check the hourly rate limit
     if calls_made >= MAX_CALLS_PER_HOUR:
         elapsed_time_hour = current_time - start_time_hour
         if elapsed_time_hour < 3600:
@@ -124,27 +123,41 @@ async def query_mde(session, api_token, query, retries=5, backoff_factor=5):
         try:
             async with session.post(API_URL, headers=headers, json=query_data) as response:
                 if response.status == 401:
-                    print("API Key Is Deprecated. Add a new one to the config.json file.")
-                    sys.exit(1)  # Exit the script
-                response.raise_for_status()
+                    logging.error("API Key is deprecated. Please update the config.json file.")
+                    sys.exit(1)
+                response.raise_for_status()  # Raises an error for bad responses
                 calls_made += 1
                 return await response.json()
         except aiohttp.ClientError as e:
             logging.error(f"Error querying MDE: {e}")
-            if response.status == 429:
+
+            # Handle specific exceptions
+            if isinstance(e, aiohttp.ClientConnectionError):
+                logging.error("Connection error occurred. Retrying...")
+            elif isinstance(e, aiohttp.ClientTimeout):
+                logging.error("Request timed out. Retrying...")
+            elif hasattr(e, 'status') and e.status == 429:
                 wait_time = backoff_factor * (attempt + 1)
-                logging.error(f"Retrying in {wait_time} seconds...")
+                logging.error(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
                 await asyncio.sleep(wait_time)
+                continue  # Retry on 429
             else:
-                break
+                logging.error(f"An unexpected error occurred: {e}. Press Enter to continue...")
+                input()  # Wait for user input
+                break  # Exit the retry loop for non-retryable errors
+
+        except Exception as e:
+            logging.error(f"An unexpected error occurred: {e}. Press Enter to continue...")
+            input()  # Wait for user input
+            break  # Exit the retry loop for non-retryable errors
 
     logging.error(f"No result returned for query: {query}")
     return None
-
-async def process_items(items, api_token):
+# Process items
+async def process_items(items: list, api_token: str):
     query_count = 0
     critical_error_occurred = False
-    
+
     query_mapping = {
         "SHA256": lambda item: f"""
             DeviceFileEvents
@@ -188,7 +201,7 @@ async def process_items(items, api_token):
     os.makedirs(results_folder, exist_ok=True)
     csv_file_path = os.path.join(results_folder, "results.csv")
 
-    def get_query(item):
+    def get_query(item: str) -> str:
         if is_sha256(item):
             query_counts["SHA256"] += 1
             return query_mapping["SHA256"](item)
@@ -211,7 +224,7 @@ async def process_items(items, api_token):
             logging.warning(f"Invalid item format: {item}")
             return None
 
-    async def process_item(session, item):
+    async def process_item(session: aiohttp.ClientSession, item: str):
         nonlocal query_count, critical_error_occurred
         if critical_error_occurred:
             return
@@ -272,23 +285,22 @@ async def process_items(items, api_token):
     logging.info(f"Total execution time: {total_time:.2f} seconds")
     logging.info(f"Total queries processed: {query_count}")
 
-def handle_interrupt(signum):
+def handle_interrupt(signum, frame):
     logging.info("Script interrupted by user. Exiting...")
     sys.exit(0)
 
 async def main():
-    """ Main function that sets up the signal handler, loads API token from configuration file, reads IOCs file, and processes the items. """
     signal.signal(signal.SIGINT, handle_interrupt)
-    # Load API key from configuration file
     
-    def load_config(filename):
+    # Load API key from configuration file
+    def load_config(filename: str) -> dict:
         with open(filename, 'r') as file:
             return json.load(file)
     
     config = load_config('config.json')
     api_token = config.get("api_token")
     
-    iocs_file = input("Please enter IOCs File : ")
+    iocs_file = input("Please enter IOCs File: ")
 
     # Read items from file
     with open(iocs_file, 'r') as file:
