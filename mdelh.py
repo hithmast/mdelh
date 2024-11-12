@@ -93,7 +93,7 @@ def is_hostname(value: str) -> bool:
     return all(allowed.match(x) for x in value.split("."))
 
 # Query MDE
-async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, retries: int = 5, backoff_factor: int = 5) -> dict:
+async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, retries: int = 10, backoff_factor: int = 5) -> dict:
     global calls_made, start_time_minute, start_time_hour
 
     headers = {
@@ -141,18 +141,22 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
                 logging.error(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
                 await asyncio.sleep(wait_time)
                 continue  # Retry on 429
+            elif hasattr(e, 'status') and e.status == 502:
+                logging.error("Bad Gateway error occurred. This may be a temporary issue. Retrying...")
+                wait_time = backoff_factor * (attempt + 1)
+                await asyncio.sleep(wait_time)
+                continue  # Retry on 502
             else:
-                logging.error(f"An unexpected error occurred: {e}. Press Enter to continue...")
-                input()  # Wait for user input
-                break  # Exit the retry loop for non-retryable errors
+                logging.error(f"An unexpected error occurred: {e}. Continuing to the next query...")
+                return None  # Return None to continue with the next query
 
         except Exception as e:
-            logging.error(f"An unexpected error occurred: {e}. Press Enter to continue...")
-            input()  # Wait for user input
-            break  # Exit the retry loop for non-retryable errors
+            logging.error(f"An unexpected error occurred: {e}. Continuing to the next query...")
+            return None  # Return None to continue with the next query
 
     logging.error(f"No result returned for query: {query}")
     return None
+
 # Process items
 async def process_items(items: list, api_token: str):
     query_count = 0
