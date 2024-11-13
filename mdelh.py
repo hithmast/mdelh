@@ -555,5 +555,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Set up logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    asyncio.run(main(args.iocs, args.di))
+# Check if asyncio.run is available
+    if hasattr(asyncio, 'run'):
+        asyncio.run(main(args.iocs, args.di))
+    else:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main(args.iocs, args.di))
+        loop.close()
