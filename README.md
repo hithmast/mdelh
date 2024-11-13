@@ -9,14 +9,14 @@ The **MDE Lazy Hunter** script interacts with the Microsoft Defender for Endpoin
 - **MDE Querying**: Queries the Microsoft Defender for Endpoint API using KQL (Kusto Query Language) queries.
 - **Timestamp Conversion**: Converts UTC timestamps to Cairo local time.
 - **Input Validation**: Validates SHA256, SHA1, MD5, IPv4 addresses, URLs, and hostnames.
-- **Asynchronous Processing**: Utilizes multi-threading to handle multiple queries concurrently.
+- **Asynchronous Processing**: Utilizes asynchronous processing to handle multiple queries concurrently.
 - **Rate Limiting**: Adheres to API rate limits of up to 45 calls per minute and 1,500 calls per hour.
 - **CSV Output**: Saves query results to a CSV file in the `results` folder.
 
 ## Prerequisites
 
 - Python 3.6 or higher
-- Required libraries: `aiohttp`, `dateutil`, `pytz`,`aiofiles`
+- Required libraries: `aiohttp`, `dateutil`, `pytz`, `aiofiles`
 
 Install the required libraries using:
 
@@ -52,18 +52,40 @@ Create a `config.json` file with the following format:
 3. **Run the Script**: Execute the script by running:
 
     ```bash
-    python mdelh.py
+    python mdelh.py path/to/Iocs.txt
     ```
-
 ## Functions
 
-- `convert_to_cairo_time(timestamp_str)`: Converts a UTC timestamp to Cairo local time.
-- `is_sha256(value)`, `is_sha1(value)`, `is_md5(value)`: Validates SHA256, SHA1, or MD5 hashes.
-- `is_ipv4(value)`, `is_private_ipv4(value)`: Validates and differentiates between public and private IPv4 addresses.
-- `is_url(value)`, `is_hostname(value)`: Validates URLs and hostnames.
-- `query_mde(api_token, query)`: Queries the MDE API and returns the JSON response.
-- `process_items(items, api_token, max_workers=10, backoff_time=1)`: Processes a list of items asynchronously, queries the MDE API, and writes results to a CSV file.
+- `convert_to_cairo_time(timestamp_str)`: 
+  Converts a UTC timestamp to Cairo local time.
 
+- `is_sha256(value)`: 
+  Validates if a given string is a valid SHA256 hash.
+
+- `is_sha1(value)`: 
+  Validates if a given string is a valid SHA1 hash.
+
+- `is_md5(value)`: 
+  Validates if a given string is a valid MD5 hash.
+
+- `is_ipv4(value)`: 
+  Validates if a given string is a valid public IPv4 address.
+
+- `is_private_ipv4(value)`: 
+  Validates if a given string is a valid private IPv4 address.
+
+- `is_url(value)`: 
+  Validates if a given string is a valid URL.
+
+- `is_hostname(value)`: 
+  Validates if a given string is a valid hostname.
+
+- `query_mde(session, api_token, query)`: 
+  Queries the MDE API with the provided query and returns the JSON response.
+
+- `process_items(items, api_token)`: 
+  Processes a list of items asynchronously, queries the MDE API for each item, and writes the results to a CSV file.
+  
 ## Example
 
 **Prepare Input File**: Create a file named `IOCs.txt` with content like:
@@ -80,7 +102,7 @@ https://bing.com
 **Run the Script**:
 
 ```bash
-python mdelh.py
+python mdelh.py IOCs.txt
 ```
 
 **Expected Output**: Results are saved in `results/results.csv` with timestamps converted to Cairo time.
@@ -114,6 +136,4 @@ The script adheres to these API rate limits:
 - **Execution Limits**:
   - **API Calls**: Up to 45 calls per minute, 1,500 calls per hour.
   - **Execution Time**: Up to 10 minutes of running time per hour and 3 hours per day.
-  - **Max Request Duration**: 200 seconds per request.
-- **429 Response**: Indicates quota limits are exceeded. Check the response body for details.
-- **Query Result Size**: A single request result size cannot exceed 124 MB.
+  - **Max Request Duration**: 10 minutes.
