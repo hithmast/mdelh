@@ -16,7 +16,7 @@ The **MDE Lazy Hunter** script interacts with the Microsoft Defender for Endpoin
 ## Prerequisites
 
 - Python 3.6 or higher
-- Required libraries: `aiohttp`, `dateutil`, `pytz`, `aiofiles`
+- Required libraries: `aiohttp`, `dateutil`, `pytz`, `aiofiles`,`argparse`
 
 Install the required libraries using:
 
