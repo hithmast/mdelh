@@ -12,6 +12,7 @@ import ipaddress
 import aiofiles
 from dateutil.parser import parse
 import pytz
+import argparse
 
 API_URL = "https://api.securitycenter.microsoft.com/api/advancedqueries/run"
 
