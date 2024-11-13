@@ -21,7 +21,7 @@ The **MDE Lazy Hunter** script interacts with the Microsoft Defender for Endpoin
 Install the required libraries using:
 
 ```bash
-pip install aiofiles aiohttp python-dateutil pytz
+pip install aiofiles aiohttp python-dateutil pytz argparse
 ```
 
 ## Obtaining the API Key
