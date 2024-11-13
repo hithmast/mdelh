@@ -137,6 +137,39 @@ The script adheres to these API rate limits:
   - **API Calls**: Up to 45 calls per minute, 1,500 calls per hour.
   - **Execution Time**: Up to 10 minutes of running time per hour and 3 hours per day.
   - **Max Request Duration**: 10 minutes.
+## Code Flow in Mermaid 
+```mermaid
+flowchart TD
+    A[Start] --> B[Parse Command-Line Arguments]
+    B -->|--iocs| C[Process IOCs]
+    B -->|--di| D[Query Device Inventory]
+    B -->|No valid operation| E[Log Error: No valid operation specified]
+    
+    C --> F[Load Configuration]
+    D --> F
+    
+    F --> G[Load API Token]
+    G --> H[Handle Interrupt Signal]
+    
+    C --> I[Read IOC File]
+    I --> J[Process Items]
+    
+    D --> K[Read Device Names File]
+    K --> L[Fetch Device Software Inventory]
+    
+    J --> M[Query MDE]
+    L --> N[Query MDE]
+    
+    M --> O[Handle API Response]
+    N --> O
+    
+    O --> P[Log Results]
+    O --> Q[Handle Errors]
+    
+    P --> R[End]
+    Q --> R
+    E --> R
+```
 ## Updates and Tasks
 
 ### To Do
