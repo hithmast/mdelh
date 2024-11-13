@@ -36,26 +36,66 @@ query_counts = {
 
 # Timezone conversion
 def convert_to_cairo_time(timestamp_str: str) -> str:
+    """Convert a UTC timestamp string to Cairo time.
+
+    Args:
+        timestamp_str (str): The UTC timestamp string.
+
+    Returns:
+        str: The converted timestamp in Cairo time.
+    """
     try:
         utc_dt = parse(timestamp_str)
         cairo_tz = pytz.timezone('Africa/Cairo')
         cairo_dt = utc_dt.astimezone(cairo_tz)
         return cairo_dt.strftime("%Y-%m-%d %H:%M:%S")
     except ValueError as e:
-        logging.error(f"Error converting timestamp: {timestamp_str}, Error: {e}")
+        logging.error("Error converting timestamp: %s, Error: %s", timestamp_str, e)
         return ""
 
 # Validation functions
 def is_sha256(value: str) -> bool:
+    """Check if a string is a valid SHA256 hash.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: True if valid SHA256, False otherwise.
+    """
     return len(value) == 64 and set(value.lower()).issubset("0123456789abcdef")
 
 def is_sha1(value: str) -> bool:
+    """Check if a string is a valid SHA1 hash.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: True if valid SHA1, False otherwise.
+    """
     return len(value) == 40 and set(value.lower()).issubset("0123456789abcdef")
 
 def is_md5(value: str) -> bool:
+    """Check if a string is a valid MD5 hash.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: True if valid MD5, False otherwise.
+    """
     return len(value) == 32 and set(value.lower()).issubset("0123456789abcdef")
 
 def is_ipv4(value: str) -> bool:
+    """Check if a string is a valid public IPv4 address.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: True if valid public IPv4, False otherwise.
+    """
     try:
         ip = ipaddress.ip_address(value)
         return isinstance(ip, ipaddress.IPv4Address) and not ip.is_private
@@ -63,13 +103,29 @@ def is_ipv4(value: str) -> bool:
         return False
 
 def is_private_ipv4(value: str) -> bool:
+    """Check if a string is a valid private IPv4 address.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: True if valid private IPv4, False otherwise.
+    """
     try:
         ip = ipaddress.ip_address(value)
         return isinstance(ip, ipaddress.IPv4Address) and ip.is_private
     except ValueError:
         return False
-    
+
 def is_url(value: str) -> bool:
+    """Check if a string is a valid URL.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: True if valid URL, False otherwise.
+    """
     return bool(re.match(
         r'^(https?|ftp):\/\/'  # Scheme (http, https, ftp)
         r'('
@@ -85,6 +141,14 @@ def is_url(value: str) -> bool:
     ))
 
 def is_hostname(value: str) -> bool:
+    """Check if a string is a valid hostname.
+
+    Args:
+        value (str): The string to check.
+
+    Returns:
+        bool: True if valid hostname, False otherwise.
+    """
     if len(value) > 255:
         return False
     if value[-1] == ".":
@@ -94,6 +158,18 @@ def is_hostname(value: str) -> bool:
 
 # Query MDE
 async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, retries: int = 10, backoff_factor: int = 5) -> dict:
+    """Query the Microsoft Defender API for a specific query.
+
+    Args:
+        session (aiohttp.ClientSession): The aiohttp session to use for the request.
+        api_token (str): The API token for authentication.
+        query (str): The query string to send.
+        retries (int): The number of retries on failure.
+        backoff_factor (int): The backoff factor for retries.
+
+    Returns:
+        dict: The JSON response from the API.
+    """
     global calls_made, start_time_minute, start_time_hour
 
     headers = {
@@ -129,7 +205,7 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
                 calls_made += 1
                 return await response.json()
         except aiohttp.ClientError as e:
-            logging.error(f"Error querying MDE: {e}")
+            logging.error("Error querying MDE: %s", e)
 
             # Handle specific exceptions
             if isinstance(e, aiohttp.ClientConnectionError):
@@ -138,7 +214,7 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
                 logging.error("Request timed out. Retrying...")
             elif hasattr(e, 'status') and e.status == 429:
                 wait_time = backoff_factor * (attempt + 1)
-                logging.error(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+                logging.error("Rate limit exceeded. Retrying in %d seconds...", wait_time)
                 await asyncio.sleep(wait_time)
                 continue  # Retry on 429
             elif hasattr(e, 'status') and e.status == 502:
@@ -147,18 +223,23 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
                 await asyncio.sleep(wait_time)
                 continue  # Retry on 502
             else:
-                logging.error(f"An unexpected error occurred: {e}. Continuing to the next query...")
-                return None  # Return None to continue with the next query
+                # Catch-all for other ClientErrors
+                logging.error("An unexpected error occurred: %s. Continuing to the next query...", e)
+                return None  # Return None to allow continuing
 
         except Exception as e:
-            logging.error(f"An unexpected error occurred: {e}. Continuing to the next query...")
-            return None  # Return None to continue with the next query
-
-    logging.error(f"No result returned for query: {query}")
+            logging.error("An unexpected error occurred: %s. Continuing to the next query...", e)
+            return None  # Return None to allow continuing
     return None
-    
+
 # Process items
 async def process_items(items: list, api_token: str):
+    """Process a list of items and query the Microsoft Defender API.
+
+    Args:
+        items (list): The list of items to process.
+        api_token (str): The API token for authentication.
+    """
     query_count = 0
     critical_error_occurred = False
 
@@ -206,6 +287,14 @@ async def process_items(items: list, api_token: str):
     csv_file_path = os.path.join(results_folder, "results.csv")
 
     def get_query(item: str) -> str:
+        """Get the appropriate query for the given item.
+
+        Args:
+            item (str): The item to query.
+
+        Returns:
+            str: The query string or None if invalid.
+        """
         if not item:  # Check if the item is an empty string
             logging.warning("Received an empty item. Skipping...")
             return None
@@ -228,10 +317,16 @@ async def process_items(items: list, api_token: str):
             query_counts["RemoteUrl"] += 1
             return query_mapping["RemoteUrl"](item)
         else:
-            logging.warning(f"Invalid item format: {item}")
+            logging.warning("Invalid item format: %s", item)
             return None
 
     async def process_item(session: aiohttp.ClientSession, item: str):
+        """Process a single item and query the API.
+
+        Args:
+            session (aiohttp.ClientSession): The aiohttp session to use for the request.
+            item (str): The item to process.
+        """
         nonlocal query_count, critical_error_occurred
         if critical_error_occurred:
             return
@@ -243,7 +338,7 @@ async def process_items(items: list, api_token: str):
         query_count += 1
         result = await query_mde(session, api_token, query)
         if result is None:
-            logging.error(f"Failed to get result for query: {query}. Stopping further processing.")
+            logging.error("Failed to get result for query: %s. Stopping further processing.", query)
             critical_error_occurred = True
             return
 
@@ -254,11 +349,11 @@ async def process_items(items: list, api_token: str):
                     "FileName", "FolderPath", "FileSize", "SHA256", "SHA1", "FileType", "LocalIP"
                 ]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
+
                 # Write header if the file is empty
                 if csvfile.tell() == 0:
                     writer.writeheader()  # Remove await
-        
+
                 for res_item in result["Results"]:
                     output_data = {
                         "Timestamp": convert_to_cairo_time(res_item.get("Timestamp", "")),
@@ -276,7 +371,7 @@ async def process_items(items: list, api_token: str):
                     }
                     writer.writerow(output_data)  # Remove await
         else:
-            logging.info(f"No results found for query: {query}")
+            logging.info("No results found for query: %s", query)
 
     start_time = time.time()
 
@@ -286,32 +381,42 @@ async def process_items(items: list, api_token: str):
 
     # Log the number of queries for each type
     for query_type, count in query_counts.items():
-        logging.info(f"Total queries for {query_type}: {count}")
+        logging.info("Total queries for %s: %d", query_type, count)
 
     total_time = time.time() - start_time
-    logging.info(f"Total execution time: {total_time:.2f} seconds")
-    logging.info(f"Total queries processed: {query_count}")
+    logging.info("Total execution time: %.2f seconds", total_time)
+    logging.info("Total queries processed: %d", query_count)
 
 def handle_interrupt(signum, frame):
+    """Handle script interruption.
+
+    Args:
+        signum: The signal number.
+        frame: The current stack frame.
+    """
     logging.info("Script interrupted by user. Exiting...")
     sys.exit(0)
 
-async def main():
-    signal.signal(signal.SIGINT, handle_interrupt)
-    
-    # Load API key from configuration file
-    def load_config(filename: str) -> dict:
-        with open(filename, 'r') as file:
-            return json.load(file)
-    
-    config = load_config('config.json')
+async def main(iocs_file: str):
+    """Main function to load configuration and process IOCs.
+
+    Args:
+        iocs_file (str): The path to the IOC file.
+    """
+    config = load_config('config.json')  # Hardcoded config file
     api_token = config.get("api_token")
-    
-    iocs_file = input("Please enter IOCs File: ")
+
+    if not os.path.isfile(iocs_file):
+        logging.error("Invalid IOC file provided. Please check the file path and try again.")
+        return
 
     # Read items from file
-    with open(iocs_file, 'r') as file:
-        hashes = [line.strip() for line in file]
+    try:
+        with open(iocs_file, 'r') as file:
+            hashes = [line.strip() for line in file]
+    except Exception as e:
+        logging.error("Error reading IOC file '%s': %s", iocs_file, e)
+        return
 
     try:
         await process_items(hashes, api_token)
@@ -321,5 +426,19 @@ async def main():
         logging.info("Script finished or exited.")
 
 if __name__ == "__main__":
+    # Set up command-line argument parsing
+    parser = argparse.ArgumentParser(
+        description="Process Indicators of Compromise (IOCs) using the Microsoft Defender API.",
+        epilog="Example usage:\n  python your_script.py path/to/iocs.txt"
+    )
+    parser.add_argument(
+        'iocs_file', 
+        type=str, 
+        help='Path to the file containing IOCs (one per line).'
+    )
+
+    args = parser.parse_args()
+
+    # Set up logging
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    asyncio.run(main())
+    asyncio.run(main(args.iocs_file))
