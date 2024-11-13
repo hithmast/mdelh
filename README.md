@@ -1,4 +1,3 @@
-```markdown
 # MDE Lazy Hunter
 
 ## Overview
@@ -190,4 +189,3 @@ flowchart TD
 
 ### Completed
 - [x] Add device inventory function
-```
