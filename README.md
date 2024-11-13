@@ -137,3 +137,17 @@ The script adheres to these API rate limits:
   - **API Calls**: Up to 45 calls per minute, 1,500 calls per hour.
   - **Execution Time**: Up to 10 minutes of running time per hour and 3 hours per day.
   - **Max Request Duration**: 10 minutes.
+## Updates and Tasks
+
+### To Do
+- [ ] Update documentation for new features
+- [ ] Implement unit tests for the new module
+- [ ] Review pull requests
+- [ ] Optimize performance for data processing
+
+### In Progress
+- [x] Refactor code for better readability
+- [ ] Add new logging features
+
+### Completed
+- [x] Add device inventory function
