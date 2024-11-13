@@ -1,8 +1,9 @@
+```markdown
 # MDE Lazy Hunter
 
 ## Overview
 
-The **MDE Lazy Hunter** script interacts with the Microsoft Defender for Endpoint (MDE) API to query various types of data. It supports six input types: SHA256, SHA1, MD5 hashes, public IPv4 addresses, private IPv4 addresses, URLs, and hostnames. Results are processed asynchronously, timestamps are converted to Cairo time, and results are saved in a CSV file.
+The **MDE Lazy Hunter** script interacts with the Microsoft Defender for Endpoint (MDE) API to query various types of data. It supports six input types: SHA256, SHA1, MD5 hashes, public IPv4 addresses, private IPv4 addresses, URLs, and hostnames. Results are processed asynchronously, timestamps are converted to Cairo time, and results are saved in a CSV file. The script also includes robust error handling and user prompts to decide whether to continue processing after an error or interruption.
 
 ## Features
 
@@ -12,11 +13,12 @@ The **MDE Lazy Hunter** script interacts with the Microsoft Defender for Endpoin
 - **Asynchronous Processing**: Utilizes asynchronous processing to handle multiple queries concurrently.
 - **Rate Limiting**: Adheres to API rate limits of up to 45 calls per minute and 1,500 calls per hour.
 - **CSV Output**: Saves query results to a CSV file in the `results` folder.
+- **User Interrupt Handling**: Prompts the user to decide whether to continue or exit when an error occurs or when interrupted.
 
 ## Prerequisites
 
 - Python 3.6 or higher
-- Required libraries: `aiohttp`, `dateutil`, `pytz`, `aiofiles`,`argparse`
+- Required libraries: `aiohttp`, `dateutil`, `pytz`, `aiofiles`, `argparse`
 
 Install the required libraries using:
 
@@ -32,7 +34,7 @@ To obtain the API key required for the script:
 1. Visit the [Microsoft Defender API Explorer](https://security.microsoft.com/interoperability/api-explorer).
 2. Open the Network inspection tool in your browser (e.g., press F12 and navigate to the "Network" tab).
 3. Run a query test in the API Explorer.
-4. Find the request made search for 'token' by the API Explorer and locate the authorization header.
+4. Find the request made, search for 'token' by the API Explorer, and locate the authorization header.
 5. Copy the API key (excluding the "Bearer" prefix) and add it to the `config.json` file.
 
 ## Configuration
@@ -52,8 +54,9 @@ Create a `config.json` file with the following format:
 3. **Run the Script**: Execute the script by running:
 
     ```bash
-    python mdelh.py path/to/Iocs.txt
+    python mdelh.py --iocs path/to/Iocs.txt
     ```
+
 ## Functions
 
 - `convert_to_cairo_time(timestamp_str)`: 
@@ -85,7 +88,7 @@ Create a `config.json` file with the following format:
 
 - `process_items(items, api_token)`: 
   Processes a list of items asynchronously, queries the MDE API for each item, and writes the results to a CSV file.
-  
+
 ## Example
 
 **Prepare Input File**: Create a file named `IOCs.txt` with content like:
@@ -102,7 +105,7 @@ https://bing.com
 **Run the Script**:
 
 ```bash
-python mdelh.py IOCs.txt
+python mdelh.py --iocs IOCs.txt
 ```
 
 **Expected Output**: Results are saved in `results/results.csv` with timestamps converted to Cairo time.
@@ -111,6 +114,7 @@ python mdelh.py IOCs.txt
 
 - The script logs errors encountered during API queries or result processing using Python’s logging module.
 - If a critical error occurs, the script stops processing further items and logs the issue.
+- The user is prompted to decide whether to continue processing or exit when an error occurs or when the script is interrupted.
 
 ## Rate Limits
 
@@ -137,6 +141,7 @@ The script adheres to these API rate limits:
   - **API Calls**: Up to 45 calls per minute, 1,500 calls per hour.
   - **Execution Time**: Up to 10 minutes of running time per hour and 3 hours per day.
   - **Max Request Duration**: 10 minutes.
+
 ## Code Flow in Mermaid 
 ```mermaid
 flowchart TD
@@ -170,6 +175,7 @@ flowchart TD
     Q --> R
     E --> R
 ```
+
 ## Updates and Tasks
 
 ### To Do
@@ -184,3 +190,4 @@ flowchart TD
 
 ### Completed
 - [x] Add device inventory function
+```
