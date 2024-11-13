@@ -13,6 +13,7 @@ import aiofiles
 from dateutil.parser import parse
 import pytz
 import argparse
+from typing import Optional
 
 API_URL = "https://api.securitycenter.microsoft.com/api/advancedqueries/run"
 
@@ -34,6 +35,26 @@ query_counts = {
     "RemoteUrl": 0,
     "LocalIP": 0
 }
+# Custom exceptions for different error
+class APIUnauthorizedError(Exception):
+    """Exception raised for unauthorized access (401)."""
+    pass
+
+class APIForbiddenError(Exception):
+    """Exception raised for forbidden access (403)."""
+    pass
+
+class APINotFoundError(Exception):
+    """Exception raised when a resource is not found (404)."""
+    pass
+
+class APIServerError(Exception):
+    """Exception raised for server errors (5xx)."""
+    pass
+
+class APIError(Exception):
+    """General exception for other API errors."""
+    pass
 
 # Timezone conversion
 def convert_to_cairo_time(timestamp_str: str) -> str:
@@ -157,8 +178,90 @@ def is_hostname(value: str) -> bool:
     allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
     return all(allowed.match(x) for x in value.split("."))
 
+async def load_config(config_file: str):
+    """Load configuration from a JSON file asynchronously."""
+    if not os.path.isfile(config_file):
+        logging.error(f"Configuration file '{config_file}' does not exist.")
+        raise FileNotFoundError(f"Configuration file '{config_file}' not found.")
+    
+    async with aiofiles.open(config_file, 'r') as file:
+        return json.loads(await file.read())
+        
+async def fetch_device_software_inventory(api_token, device_inv):
+    # Define the KQL query
+    kql_query = f"""
+    DeviceTvmSoftwareInventory
+    | project DeviceId, DeviceName, SoftwareName, SoftwareVersion, OSPlatform, OSVersion
+    | where SoftwareName !in ("android", "Linux", "Android") and DeviceName has "." and DeviceName contains "{device_inv}"
+    | order by DeviceName asc
+    """
+
+    # Prepare the request payload
+    payload = {
+        "query": kql_query
+    }
+
+    # Set up the headers
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "application/json"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(API_URL, headers=headers, json=payload) as response:
+            if response.status == 200:
+                data = await response.json()
+                return data
+            elif response.status == 401:
+                print("The API token is invalid or expired. Please check your credentials.")
+                # Stop further execution
+                raise SystemExit("Exiting due to unauthorized access.")
+            elif response.status == 403:
+                error_message = await response.text()
+                print(f"Error: 403 Forbidden - {error_message}")
+                return None
+            elif response.status == 404:
+                error_message = await response.text()
+                print(f"Error: 404 Not Found - {error_message}")
+                return None
+            elif response.status >= 500:
+                error_message = await response.text()
+                print(f"Error: {response.status} - Server error - {error_message}")
+                return None
+            else:
+                error_message = await response.text()
+                print(f"Error: {response.status} - {error_message}")
+                return None
+
+async def query_device_inventory(api_token, device_names_file):
+    """Query device software inventory based on device names from the specified file."""
+    if not os.path.isfile(device_names_file):
+        logging.error(f"Device names file '{device_names_file}' does not exist.")
+        return
+
+    async with aiofiles.open(device_names_file, 'r') as file:
+        device_names = [line.strip() for line in await file.readlines()]
+
+    for device_name in device_names:
+        if device_name:  # Ensure the device name is not empty
+            try:
+                result = await fetch_device_software_inventory(api_token, device_name)
+                if result:
+                    print(json.dumps(result, indent=4))
+            except APIUnauthorizedError as e:
+                print(e)
+                raise SystemExit("Exiting due to unauthorized access.")
+            except APIForbiddenError as e:
+                print(e)
+            except APINotFoundError as e:
+                print(e)
+            except APIServerError as e:
+                print(e)
+            except APIError as e:
+                print(e)
+                
 # Query MDE
-async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, retries: int = 10, backoff_factor: int = 5) -> dict:
+async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, retries: int = 10, backoff_factor: int = 5) -> Optional[dict]:
     """Query the Microsoft Defender API for a specific query.
 
     Args:
@@ -298,7 +401,7 @@ async def process_items(items: list, api_token: str):
         """
         if not item:  # Check if the item is an empty string
             logging.warning("Received an empty item. Skipping...")
-            return None
+            return ""
         if is_sha256(item):
             query_counts["SHA256"] += 1
             return query_mapping["SHA256"](item)
@@ -319,7 +422,7 @@ async def process_items(items: list, api_token: str):
             return query_mapping["RemoteUrl"](item)
         else:
             logging.warning("Invalid item format: %s", item)
-            return None
+            return ""
 
     async def process_item(session: aiohttp.ClientSession, item: str):
         """Process a single item and query the API.
@@ -396,22 +499,15 @@ def handle_interrupt(signum, frame):
         frame: The current stack frame.
     """
     logging.info("Script interrupted by user. Exiting...")
-    sys.exit(0)
-
-async def main(iocs_file: str):
-    """Main function to load configuration and process IOCs.
-
-    Args:
-        iocs_file (str): The path to the IOC file.
-    """
-    config = load_config('config.json')  # Hardcoded config file
-    api_token = config.get("api_token")
-
+    sys.exit()
+    
+async def process_iocs(iocs_file: str, api_token: str):
+    """Process Indicators of Compromise (IOCs) from the specified file."""
     if not os.path.isfile(iocs_file):
         logging.error("Invalid IOC file provided. Please check the file path and try again.")
         return
 
-    # Read items from file
+    # Read items from IOC file
     try:
         with open(iocs_file, 'r') as file:
             hashes = [line.strip() for line in file]
@@ -420,26 +516,44 @@ async def main(iocs_file: str):
         return
 
     try:
-        await process_items(hashes, api_token)
+        await process_items(hashes, api_token)  # Assuming process_items is defined elsewhere
     except KeyboardInterrupt:
         logging.info("Script interrupted by user.")
-    finally:
-        logging.info("Script finished or exited.")
+        
+async def main(iocs_file: str = None, device_names_file: str = None):
+    """Main function to load configuration and execute the specified operation."""
+    config = await load_config('config.json')  # Load config asynchronously
+    api_token = config.get("api_token")
+
+    # Register the signal handler for SIGINT
+    signal.signal(signal.SIGINT, handle_interrupt)
+
+    if iocs_file:
+        await process_iocs(iocs_file, api_token)
+    elif device_names_file:
+        await query_device_inventory(api_token, device_names_file)
+    else:
+        logging.error("No valid operation specified. Please use --iocs or --di.")
 
 if __name__ == "__main__":
     # Set up command-line argument parsing
     parser = argparse.ArgumentParser(
-        description="Process Indicators of Compromise (IOCs) using the Microsoft Defender API.",
-        epilog="Example usage:\n  python your_script.py path/to/iocs.txt"
+        description="Process Indicators of Compromise (IOCs) or query Device Software Inventory using the Microsoft Defender API.",
+        epilog="Example usage:\n  python your_script.py --iocs path/to/iocs.txt\n  python your_script.py --di path/to/device_names.txt"
     )
     parser.add_argument(
-        'iocs_file', 
-        type=str, 
+        '--iocs',
+        type=str,
         help='Path to the file containing IOCs (one per line).'
+    )
+    parser.add_argument(
+        '--di',
+        type=str,
+        help='Path to the file containing device names (one per line).'
     )
 
     args = parser.parse_args()
 
     # Set up logging
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    asyncio.run(main(args.iocs_file))
+    asyncio.run(main(args.iocs, args.di))
