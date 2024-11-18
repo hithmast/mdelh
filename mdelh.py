@@ -91,19 +91,51 @@ def is_sha256(value: str) -> bool:
   return len(value) == 64 and set(value.lower()).issubset("0123456789abcdef")
 
 def is_sha1(value: str) -> bool:
+      """Checks if the provided value is a valid SHA1 hash.
+
+  Args:
+      value: The string to validate.
+
+  Returns:
+      True if the value is a valid SHA1 hash (length 40 and characters are lowercase a-f and 0-9), False otherwise.
+  """
     return len(value) == 40 and set(value.lower()).issubset("0123456789abcdef")
 
 def is_md5(value: str) -> bool:
+          """Checks if the provided value is a valid MD5  hash.
+
+  Args:
+      value: The string to validate.
+
+  Returns:
+      True if the value is a valid MD5  hash (length 32 and characters are lowercase a-f and 0-9), False otherwise.
+  """
     return len(value) == 32 and set(value.lower()).issubset("0123456789abcdef")
 
 def is_ipv4(value: str) -> bool:
-    try:
-        ip = ipaddress.ip_address(value)
-        return isinstance(ip, ipaddress.IPv4Address) and not ip.is_private
-    except ValueError:
-        return False
+  """Checks if the provided value is a valid non-private IPv4 address.
+
+  Args:
+      value: The string to validate.
+
+  Returns:
+      True if the value is a valid non-private IPv4 address, False otherwise.
+  """
+  try:
+    ip = ipaddress.ip_address(value)
+    return isinstance(ip, ipaddress.IPv4Address) and not ip.is_private
+  except ValueError:
+    return False
 
 def is_private_ipv4(value: str) -> bool:
+      """Checks if the provided value is a valid private IPv4 address.
+
+  Args:
+      value: The string to validate.
+
+  Returns:
+      True if the value is a valid private IPv4 address, False otherwise.
+  """
     try:
         ip = ipaddress.ip_address(value)
         return isinstance(ip, ipaddress.IPv4Address) and ip.is_private
@@ -111,6 +143,14 @@ def is_private_ipv4(value: str) -> bool:
         return False
 
 def is_url(value: str) -> bool:
+      """Checks if the provided value is a valid URL.
+
+  Args:
+      value: The string to validate.
+
+  Returns:
+      True if the value is a valid URL, False otherwise.
+  """
     return bool(re.match(
         r'^(https?|ftp):\/\/'  # Scheme (http, https, ftp)
         r'('
@@ -126,6 +166,14 @@ def is_url(value: str) -> bool:
     ))
 
 def is_hostname(value: str) -> bool:
+      """Checks if the provided value is a valid hostname.
+
+  Args:
+      value: The string to validate.
+
+  Returns:
+      True if the value is a valid hostname, False otherwise.
+  """
     if len(value) > 255:
         return False
     if value[-1] == ".":
@@ -134,6 +182,17 @@ def is_hostname(value: str) -> bool:
     return all(allowed.match(x) for x in value.split("."))
 
 async def load_config(config_file: str):
+      """Loads the configuration from the specified JSON file.
+
+  Args:
+      config_file: The path to the configuration file.
+
+  Raises:
+      FileNotFoundError: If the configuration file does not exist.
+
+  Returns:
+      The parsed configuration as a dictionary.
+  """
     if not os.path.isfile(config_file):
         logging.error(f"Configuration file '%s' does not exist.", config_file)
         raise FileNotFoundError(f"Configuration file '%s' not found.", config_file)
@@ -142,6 +201,22 @@ async def load_config(config_file: str):
         return json.loads(await file.read())
 
 async def execute_query(api_token, payload):
+      """Executes a query to the Microsoft Security Center API.
+
+  Args:
+      api_token: The API token for authentication.
+      payload: The query payload as a JSON object.
+
+  Raises:
+      APIUnauthorizedError: If the API token is invalid or expired.
+      APIForbiddenError: If the API returns a 403 Forbidden response.
+      APINotFoundError: If the API returns a 404 Not Found response.
+      APIServerError: If the API returns a server error response (status code >= 500).
+      APIError: For any other unexpected API error.
+
+  Returns:
+      The JSON response from the API, or None if an error occurs.
+  """
     headers = {
         "Authorization": f"Bearer {api_token}",
         "Content-Type": "application/json"
