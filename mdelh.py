@@ -151,7 +151,7 @@ def is_url(value: str) -> bool:
   Returns:
       True if the value is a valid URL, False otherwise.
   """
-    return bool(re.match(
+      return bool(re.match(
         r'^(https?|ftp):\/\/'  # Scheme (http, https, ftp)
         r'('
         r'([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+\.[a-zA-Z]{2,}|'  # Domain name
@@ -174,12 +174,12 @@ def is_hostname(value: str) -> bool:
   Returns:
       True if the value is a valid hostname, False otherwise.
   """
-    if len(value) > 255:
+      if len(value) > 255:
         return False
-    if value[-1] == ".":
-        value = value[:-1]
-    allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
-    return all(allowed.match(x) for x in value.split("."))
+      if value[-1] == ".":
+          value = value[:-1]
+          allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+      return all(allowed.match(x) for x in value.split("."))
 
 async def load_config(config_file: str):
       """Loads the configuration from the specified JSON file.
@@ -193,12 +193,11 @@ async def load_config(config_file: str):
   Returns:
       The parsed configuration as a dictionary.
   """
-    if not os.path.isfile(config_file):
-        logging.error(f"Configuration file '%s' does not exist.", config_file)
-        raise FileNotFoundError(f"Configuration file '%s' not found.", config_file)
-    
-    async with aiofiles.open(config_file, 'r') as file:
-        return json.loads(await file.read())
+      if not os.path.isfile(config_file):
+        logging.error("Configuration file '%s' does not exist.", config_file)
+        raise FileNotFoundError("Configuration file '%s' not found." % config_file)
+      async with aiofiles.open(config_file, 'r') as file:
+          return json.loads(await file.read())
 
 async def execute_query(api_token, payload):
       """Executes a query to the Microsoft Security Center API.
@@ -217,29 +216,28 @@ async def execute_query(api_token, payload):
   Returns:
       The JSON response from the API, or None if an error occurs.
   """
-    headers = {
+      headers = {
         "Authorization": f"Bearer {api_token}",
         "Content-Type": "application/json"
     }
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(API_URL, headers=headers, json=payload) as response:
-            if response.status == 200:
+      async with aiohttp.ClientSession() as session:
+          async with session.post(API_URL, headers=headers, json=payload) as response:
+              if response.status == 200:
                 return await response.json()
-            elif response.status == 401:
-                raise APIUnauthorizedError("The API token is invalid or expired. Please check your credentials.")
-            elif response.status == 403:
-                error_message = await response.text()
-                raise APIForbiddenError(f"403 Forbidden - %s", error_message)
-            elif response.status == 404:
-                error_message = await response.text()
-                raise APINotFoundError(f"404 Not Found - %s", error_message)
-            elif response.status >= 500:
-                error_message = await response.text()
-                raise APIServerError(f"{response.status} - Server error - %s", error_message)
-            else:
-                error_message = await response.text()
-                raise APIError(f"{response.status} - %s", error_message)
+              elif response.status == 401:
+                    raise APIUnauthorizedError("The API token is invalid or expired. Please check your credentials.")
+              elif response.status == 403:
+                    error_message = await response.text()
+                    raise APIForbiddenError("403 Forbidden - %s" % error_message)
+              elif response.status == 404:
+                    error_message = await response.text()
+                    raise APINotFoundError("404 Not Found - %s" % error_message)
+              elif response.status >= 500:
+                    error_message = await response.text()
+                    raise APIServerError("500 - Server error - %s" % error_message)
+              else:
+                    error_message = await response.text()
+                    raise APIError("%s - %s" % (response.status, error_message))
 
 async def fetch_device_software_inventory(api_token, device_inv):
     # Construct the KQL query
@@ -285,7 +283,7 @@ async def query_device_inventory(api_token, device_names_file):
                 await writer.writeheader()  # Write the header row
             break  # Exit the loop if successful
         except PermissionError:
-            logging.warning(f"Permission denied for file '%s'. Retrying in 1 second...", inventory_results_file)
+            logging.warning("Permission denied for file '%s'. Retrying in 1 second...", inventory_results_file)
             await asyncio.sleep(1)  # Wait before retrying
     else:
         logging.error(f"Failed to open file '{inventory_results_file}' after multiple attempts.")
