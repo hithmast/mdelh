@@ -190,7 +190,7 @@ async def query_device_inventory(api_token, device_names_file):
                 await writer.writeheader()  # Write the header row
             break  # Exit the loop if successful
         except PermissionError:
-            logging.warning(f"Permission denied for file '{inventory_results_file}'. Retrying in 1 second...")
+            logging.warning(f"Permission denied for file '%s'. Retrying in 1 second...",inventory_results_file)
             await asyncio.sleep(1)  # Wait before retrying
     else:
         logging.error(f"Failed to open file '{inventory_results_file}' after multiple attempts.")
