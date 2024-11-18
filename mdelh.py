@@ -61,14 +61,22 @@ class APIError(Exception):
 
 # Timezone conversion
 def convert_to_cairo_time(timestamp_str: str) -> str:
-    try:
-        utc_dt = parse(timestamp_str)
-        cairo_tz = pytz.timezone('Africa/Cairo')
-        cairo_dt = utc_dt.astimezone(cairo_tz)
-        return cairo_dt.strftime("%Y-%m-%d %H:%M:%S")
-    except ValueError as e:
-        logging.error("Error converting timestamp: %s, Error: %s", timestamp_str, e)
-        return ""
+  """Converts a UTC timestamp string to Cairo time (Africa/Cairo timezone).
+
+  Args:
+      timestamp_str: The UTC timestamp string in ISO 8601 format.
+
+  Returns:
+      The converted timestamp string in the format "%Y-%m-%d %H:%M:%S", or an empty string if the conversion fails.
+  """
+  try:
+    utc_dt = parse(timestamp_str)
+    cairo_tz = pytz.timezone('Africa/Cairo')
+    cairo_dt = utc_dt.astimezone(cairo_tz)
+    return cairo_dt.strftime("%Y-%m-%d %H:%M:%S")
+  except ValueError as e:
+    logging.error("Error converting timestamp: %s, Error: %s", timestamp_str, e)
+    return ""
 
 # Validation functions
 def is_sha256(value: str) -> bool:
