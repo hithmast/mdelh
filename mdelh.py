@@ -44,16 +44,20 @@ class APIUnauthorizedError(Exception):
     pass
 
 class APIForbiddenError(Exception):
-    pass
+  """Raised when the API returns a 403 Forbidden response."""
+  pass
 
 class APINotFoundError(Exception):
-    pass
+  """Raised when the API returns a 404 Not Found response."""
+  pass
 
 class APIServerError(Exception):
-    pass
+  """Raised when the API returns a server error response (status code >= 500)."""
+  pass
 
 class APIError(Exception):
-    pass
+  """Raised for any other unexpected API error."""
+  pass
 
 # Timezone conversion
 def convert_to_cairo_time(timestamp_str: str) -> str:
