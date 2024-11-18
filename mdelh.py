@@ -115,8 +115,8 @@ def is_hostname(value: str) -> bool:
 
 async def load_config(config_file: str):
     if not os.path.isfile(config_file):
-        logging.error(f"Configuration file '%s' does not exist.",config_file)
-        raise FileNotFoundError(f"Configuration file '%s' not found.",config_file)
+        logging.error(f"Configuration file '%s' does not exist.", config_file)
+        raise FileNotFoundError(f"Configuration file '%s' not found.", config_file)
     
     async with aiofiles.open(config_file, 'r') as file:
         return json.loads(await file.read())
@@ -135,16 +135,16 @@ async def execute_query(api_token, payload):
                 raise APIUnauthorizedError("The API token is invalid or expired. Please check your credentials.")
             elif response.status == 403:
                 error_message = await response.text()
-                raise APIForbiddenError(f"403 Forbidden - %s",error_message)
+                raise APIForbiddenError(f"403 Forbidden - %s", error_message)
             elif response.status == 404:
                 error_message = await response.text()
-                raise APINotFoundError(f"404 Not Found - %s",error_message)
+                raise APINotFoundError(f"404 Not Found - %s", error_message)
             elif response.status >= 500:
                 error_message = await response.text()
-                raise APIServerError(f"{response.status} - Server error - %s",error_message)
+                raise APIServerError(f"{response.status} - Server error - %s", error_message)
             else:
                 error_message = await response.text()
-                raise APIError(f"{response.status} - %s",error_message)
+                raise APIError(f"{response.status} - %s", error_message)
 
 async def fetch_device_software_inventory(api_token, device_inv):
     # Construct the KQL query
