@@ -218,8 +218,7 @@ async def execute_query(api_token, payload):
   """
       headers = {
         "Authorization": f"Bearer {api_token}",
-        "Content-Type": "application/json"
-    }
+        "Content-Type": "application/json"}
       async with aiohttp.ClientSession() as session:
           async with session.post(API_URL, headers=headers, json=payload) as response:
               if response.status == 200:
