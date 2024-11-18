@@ -138,10 +138,10 @@ async def execute_query(api_token, payload):
                 raise APIForbiddenError(f"403 Forbidden - %s",error_message)
             elif response.status == 404:
                 error_message = await response.text()
-                raise APINotFoundError(f"404 Not Found - %s",error_message")
+                raise APINotFoundError(f"404 Not Found - %s",error_message)
             elif response.status >= 500:
                 error_message = await response.text()
-                raise APIServerError(f"{response.status} - Server error - %s",error_message")
+                raise APIServerError(f"{response.status} - Server error - %s",error_message)
             else:
                 error_message = await response.text()
                 raise APIError(f"{response.status} - {error_message}")
