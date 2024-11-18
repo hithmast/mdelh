@@ -80,7 +80,15 @@ def convert_to_cairo_time(timestamp_str: str) -> str:
 
 # Validation functions
 def is_sha256(value: str) -> bool:
-    return len(value) == 64 and set(value.lower()).issubset("0123456789abcdef")
+  """Checks if the provided value is a valid SHA256 hash.
+
+  Args:
+      value: The string to validate.
+
+  Returns:
+      True if the value is a valid SHA256 hash (length 64 and characters are lowercase a-f and 0-9), False otherwise.
+  """
+  return len(value) == 64 and set(value.lower()).issubset("0123456789abcdef")
 
 def is_sha1(value: str) -> bool:
     return len(value) == 40 and set(value.lower()).issubset("0123456789abcdef")
