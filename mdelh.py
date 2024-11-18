@@ -91,7 +91,7 @@ def is_sha256(value: str) -> bool:
   return len(value) == 64 and set(value.lower()).issubset("0123456789abcdef")
 
 def is_sha1(value: str) -> bool:
-      """Checks if the provided value is a valid SHA1 hash.
+    """Checks if the provided value is a valid SHA1 hash.
 
   Args:
       value: The string to validate.
@@ -102,13 +102,13 @@ def is_sha1(value: str) -> bool:
     return len(value) == 40 and set(value.lower()).issubset("0123456789abcdef")
 
 def is_md5(value: str) -> bool:
-          """Checks if the provided value is a valid MD5  hash.
+    """Checks if the provided value is a valid MD5 hash.
 
   Args:
       value: The string to validate.
 
   Returns:
-      True if the value is a valid MD5  hash (length 32 and characters are lowercase a-f and 0-9), False otherwise.
+      True if the value is a valid MD5 hash (length 32 and characters are lowercase a-f and 0-9), False otherwise.
   """
     return len(value) == 32 and set(value.lower()).issubset("0123456789abcdef")
 
@@ -128,7 +128,7 @@ def is_ipv4(value: str) -> bool:
     return False
 
 def is_private_ipv4(value: str) -> bool:
-      """Checks if the provided value is a valid private IPv4 address.
+    """Checks if the provided value is a valid private IPv4 address.
 
   Args:
       value: The string to validate.
