@@ -556,9 +556,58 @@ async def process_iocs(iocs_file: str, api_token: str):
     except KeyboardInterrupt:
         logging.info("Script interrupted by user.")
 
+# Add this after the imports
+BANNER = r"""
+███╗   ███╗██████╗ ███████╗██╗     ██╗  ██╗
+████╗ ████║██╔══██╗██╔════╝██║     ██║  ██║
+██╔████╔██║██║  ██║█████╗  ██║     ███████║
+██║╚██╔╝██║██║  ██║██╔══╝  ██║     ██╔══██║
+██║ ╚═╝ ██║██████╔╝███████╗███████╗██║  ██║
+╚═╝     ╚═╝╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
+------------------------------                                           
+Microsoft Defender Lazy Hunter
+Author: Aly Emara
+Version: 1.0.0
+------------------------------
+"""
+
+def check_python_version():
+    """Check if Python version is 3.7 or higher."""
+    if sys.version_info < (3, 7):
+        print("Error: Python 3.7 or higher is required")
+        sys.exit(1)
+
+def check_config_exists():
+    """Check if config.json exists."""
+    if not os.path.exists('config.json'):
+        print("Error: config.json not found")
+        print("Please create a config.json file with your API token:")
+        print('{\n    "api_token": "your-api-token-here"\n}')
+        sys.exit(1)
+
+def check_results_directory():
+    """Create results directory if it doesn't exist."""
+    if not os.path.exists('results'):
+        os.makedirs('results')
+        print("Created 'results' directory")
+
+def perform_initial_checks():
+    """Perform all initial checks."""
+    check_python_version()
+    check_config_exists()
+    check_results_directory()
+
+# Modify the main() function to include these checks:
 async def main(iocs_file: str = None, device_names_file: str = None):
+    print(BANNER)
+    perform_initial_checks()
+    
     config = await load_config('config.json')
     api_token = config.get("api_token")
+    
+    if not api_token:
+        logging.error("API token not found in config.json")
+        return
 
     signal.signal(signal.SIGINT, handle_interrupt)
 
