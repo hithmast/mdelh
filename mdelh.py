@@ -166,20 +166,13 @@ def is_url(value: str) -> bool:
     ))
 
 def is_hostname(value: str) -> bool:
-      """Checks if the provided value is a valid hostname.
-
-  Args:
-      value: The string to validate.
-
-  Returns:
-      True if the value is a valid hostname, False otherwise.
-  """
-      if len(value) > 255:
+    """Checks if the provided value is a valid hostname."""
+    if len(value) > 255:
         return False
-      if value[-1] == ".":
-          value = value[:-1]
-          allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
-      return all(allowed.match(x) for x in value.split("."))
+    if value[-1] == ".":
+        value = value[:-1]
+    allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    return all(allowed.match(x) for x in value.split("."))
 
 async def load_config(config_file: str):
       """Loads the configuration from the specified JSON file.
@@ -388,8 +381,24 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
     return None
 
 async def process_items(items: list, api_token: str):
+    start_time = time.time()
     query_count = 0
     critical_error_occurred = False
+
+    results_folder = "results"
+    os.makedirs(results_folder, exist_ok=True)
+    csv_file_path = os.path.join(results_folder, "results.csv")
+
+    # Initialize CSV file with headers
+    fieldnames = [
+        "Timestamp", "DeviceName", "DeviceId", "RemoteIP", "RemoteUrl",
+        "FileName", "FolderPath", "FileSize", "SHA256", "SHA1", "FileType", 
+        "LocalIP", "InitiatingProcessFileName", "InitiatingProcessCommandLine"
+    ]
+    
+    async with aiofiles.open(csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        await writer.writeheader()
 
     query_mapping = {
         "SHA256": lambda item: f"""
@@ -430,10 +439,6 @@ async def process_items(items: list, api_token: str):
         """
     }
 
-    results_folder = "results"
-    os.makedirs(results_folder, exist_ok=True)
-    csv_file_path = os.path.join(results_folder, "results.csv")
-
     def get_query(item: str) -> str:
         if not item:
             logging.warning("Received an empty item. Skipping...")
@@ -462,7 +467,7 @@ async def process_items(items: list, api_token: str):
 
     async def process_item(session: aiohttp.ClientSession, item: str):
         nonlocal query_count, critical_error_occurred
-        if critical_error_occurred:
+        if critical_error_occurred or interrupt_occurred:
             return
         
         query = get_query(item)
@@ -476,13 +481,6 @@ async def process_items(items: list, api_token: str):
             critical_error_occurred = True
             return
 
-        # Check if an interrupt occurred after processing the query
-        if interrupt_occurred:
-            user_input = input("An error occurred. Do you want to continue processing? (y/n): ")
-            if user_input.lower() != 'y':
-                logging.info("Exiting as per user request.")
-                sys.exit()
-
         # Check for interrupt before processing results
         if interrupt_occurred:
             user_input = input("An error occurred. Do you want to continue processing? (y/n): ")
@@ -493,22 +491,11 @@ async def process_items(items: list, api_token: str):
         # Process results
         if "Results" in result and result["Results"]:
             async with aiofiles.open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
-                fieldnames = [
-                    "Timestamp", "DeviceName", "DeviceId", "RemoteIP", "RemoteUrl",
-                    "FileName", "FolderPath", "FileSize", "SHA256", "SHA1", "FileType", "LocalIP"
-                ]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-                if csvfile.tell() == 0:
-                    writer.writeheader()
-
+                
                 for res_item in result["Results"]:
-                    # Check for interrupt before writing each result
                     if interrupt_occurred:
-                        user_input = input("An error occurred. Do you want to continue processing? (y/n): ")
-                        if user_input.lower() != 'y':
-                            logging.info("Exiting as per user request.")
-                            sys.exit()
+                        return
 
                     output_data = {
                         "Timestamp": convert_to_cairo_time(res_item.get("Timestamp", "")),
@@ -522,31 +509,30 @@ async def process_items(items: list, api_token: str):
                         "SHA256": res_item.get("SHA256", ""),
                         "SHA1": res_item.get("SHA1", ""),
                         "FileType": res_item.get("FileType", ""),
-                        "LocalIP": res_item.get("LocalIP", "")
+                        "LocalIP": res_item.get("LocalIP", ""),
+                        "InitiatingProcessFileName": res_item.get("InitiatingProcessFileName", ""),
+                        "InitiatingProcessCommandLine": res_item.get("InitiatingProcessCommandLine", "")
                     }
-                    writer.writerow(output_data)
+                    await writer.writerow(output_data)
         else:
             logging.info("No results found for query: %s", query)
-
-    start_time = time.time()
 
     async with aiohttp.ClientSession() as session:
         for item in items:
             if interrupt_occurred:
                 logging.info("Exiting due to user interrupt during item processing.")
-                return
+                break
             await process_item(session, item)
 
-    for query_type, count in query_counts.items():
-        logging.info("Total queries for %s: %d", query_type, count)
+        for query_type, count in query_counts.items():
+            logging.info("Total queries for %s: %d", query_type, count)
 
-    total_time = time.time() - start_time
-    logging.info("Total execution time: %.2f seconds", total_time)
-    logging.info("Total queries processed: %d", query_count)
+        total_time = time.time() - start_time
+        logging.info("Total execution time: %.2f seconds", total_time)
+        logging.info("Total queries processed: %d", query_count)
 
-    # Check if a critical error occurred after processing
-    if query_count > 0 and critical_error_occurred:
-        logging.error("Critical error occurred during processing.")
+        if query_count > 0 and critical_error_occurred:
+            logging.error("Critical error occurred during processing.")
 
 def handle_interrupt(signum, frame):
     global interrupt_occurred
@@ -602,4 +588,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    asyncio.run(main(args.iocs, args.di))
+    
+    # Windows-specific event loop policy
+    if sys.platform.startswith('win'):
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
+    try:
+        asyncio.run(main(args.iocs, args.di))
+    except KeyboardInterrupt:
+        logging.info("Script interrupted by user.")
+    except Exception as e:
+        logging.error("An error occurred: %s", str(e))
