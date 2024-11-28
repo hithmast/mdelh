@@ -13,6 +13,10 @@ The **MDE Lazy Hunter** script interacts with the Microsoft Defender for Endpoin
 - **Rate Limiting**: Adheres to API rate limits of up to 45 calls per minute and 1,500 calls per hour.
 - **CSV Output**: Saves query results to a CSV file in the `results` folder.
 - **User Interrupt Handling**: Prompts the user to decide whether to continue or exit when an error occurs or when interrupted.
+- **Device Inventory Querying**: Query and export software inventory information for specified devices
+- **Robust Error Handling**: Custom exception classes for different API error scenarios
+- **Flexible Input Processing**: Support for both IOC processing and device inventory queries
+- **Windows Compatibility**: Special event loop policy for Windows systems
 
 ## Prerequisites
 
@@ -48,13 +52,17 @@ Create a `config.json` file with the following format:
 
 ## Script Usage
 
-1. **API Token**: Ensure the `config.json` file contains your MDE API token.
-2. **Input Data**: Create a text file (e.g., `IOCs.txt`) with one IOC per line.
-3. **Run the Script**: Execute the script by running:
+The script supports two main operations:
 
-    ```bash
-    python mdelh.py --iocs path/to/Iocs.txt
-    ```
+1. **IOC Processing**:
+```bash
+python mdelh.py --iocs path/to/IOCs.txt
+```
+
+2. **Device Inventory Query**:
+```bash
+python mdelh.py --di path/to/device_names.txt
+```
 
 ## Functions
 
@@ -87,6 +95,12 @@ Create a `config.json` file with the following format:
 
 - `process_items(items, api_token)`: 
   Processes a list of items asynchronously, queries the MDE API for each item, and writes the results to a CSV file.
+
+- `fetch_device_software_inventory(api_token, device_inv)`: 
+  Queries the device software inventory for a specific device.
+
+- `query_device_inventory(api_token, device_names_file)`: 
+  Processes a list of device names and retrieves their software inventory.
 
 ## Example
 
@@ -178,7 +192,7 @@ flowchart TD
 ## Updates and Tasks
 
 ### To Do
-- [ ] Update documentation for new features
+- [x] Update documentation for new features
 - [ ] Implement unit tests for the new module
 - [ ] Review pull requests
 - [ ] Optimize performance for data processing
@@ -189,3 +203,26 @@ flowchart TD
 
 ### Completed
 - [x] Add device inventory function
+
+## Output Files
+
+The script generates different output files based on the operation:
+
+1. **IOC Processing**: Results are saved in `results/results.csv`
+2. **Device Inventory**: Results are saved in `results/device_inventory_results.csv` with the following fields:
+   - DeviceId
+   - DeviceName
+   - SoftwareName
+   - SoftwareVersion
+   - OSPlatform
+   - OSVersion
+
+## Custom Exceptions
+
+The script now includes custom exceptions for better error handling:
+
+- `APIUnauthorizedError`: Invalid or expired API token
+- `APIForbiddenError`: Access forbidden (403)
+- `APINotFoundError`: Resource not found (404)
+- `APIServerError`: Server-side errors (500+)
+- `APIError`: Other API-related errors
