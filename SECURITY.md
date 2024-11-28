@@ -12,7 +12,7 @@ This policy applies to all developers, contributors, and users of the MDE Lazy H
 
 ### 1. Code Security
 
-- **Input Validation**: All user inputs must be validated to prevent injection attacks, such as SQL injection or command injection. Use built-in validation libraries and ensure that inputs conform to expected formats.
+- **Input Validation**: All user inputs must be validated to prevent injection attacks, such as command injection. Use built-in validation libraries and ensure that inputs conform to expected formats.
   
 - **Error Handling**: Implement proper error handling to avoid revealing sensitive information in error messages. Log errors securely without exposing stack traces or sensitive data.
 
@@ -35,8 +35,6 @@ This policy applies to all developers, contributors, and users of the MDE Lazy H
 - **Code Reviews**: Conduct regular code reviews to identify potential security vulnerabilities and ensure adherence to security practices.
 
 - **Static Code Analysis**: Use static analysis tools to scan the code for vulnerabilities before deployment.
-
-- **Security Testing**: Perform regular security testing, including penetration testing and vulnerability assessments, to identify and remediate security weaknesses.
 
 ### 5. Incident Response
 
