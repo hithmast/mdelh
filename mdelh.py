@@ -13,7 +13,7 @@ import aiofiles
 from dateutil.parser import parse
 import pytz
 import argparse
-from typing import Optional
+from typing import Optional, List
 
 API_URL = "https://api.securitycenter.microsoft.com/api/advancedqueries/run"
 
@@ -556,6 +556,45 @@ async def process_iocs(iocs_file: str, api_token: str):
     except KeyboardInterrupt:
         logging.info("Script interrupted by user.")
 
+async def query_email_inventory(api_token, emails_file: str):
+    """Queries the Microsoft Security Center API for device events based on email addresses.
+
+    Args:
+        api_token: The API token for authentication.
+        emails_file: The path to the file containing email addresses (one per line).
+
+    Returns:
+        None
+    """
+    if not os.path.isfile(emails_file):
+        logging.error("Invalid email file provided. Please check the file path and try again.")
+        return
+
+    try:
+        async with aiofiles.open(emails_file, 'r') as file:
+            emails = [line.strip() for line in await file.readlines()]
+    except Exception as e:
+        logging.error("Error reading email file '%s': %s", emails_file, e)
+        return
+
+    for email in emails:
+        logging.info("Querying for email: %s", email)  # Log each email being processed
+        kql_query = f"""
+        DeviceEvents 
+        | where InitiatingProcessAccountUpn == "{email}"
+        | distinct DeviceId, DeviceName
+        """
+        
+        payload = {
+            "Query": kql_query  # Ensure the query is included in the payload
+        }
+        
+        result = await execute_query(api_token, payload)  # Execute the query
+        if result:
+            logging.info("Results for %s: %s", email, result.get("Results", []))
+        else:
+            logging.info("No results found for email: %s", email)
+
 # Add this after the imports
 BANNER = r"""
 ███╗   ███╗██████╗ ███████╗██╗     ██╗  ██╗
@@ -598,7 +637,7 @@ def perform_initial_checks():
     check_results_directory()
 
 # Modify the main() function to include these checks:
-async def main(iocs_file: str = None, device_names_file: str = None):
+async def main(iocs_file: str = None, device_names_file: str = None, emails_file: str = None):
     print(BANNER)
     perform_initial_checks()
     
@@ -615,13 +654,15 @@ async def main(iocs_file: str = None, device_names_file: str = None):
         await process_iocs(iocs_file, api_token)
     elif device_names_file:
         await query_device_inventory(api_token, device_names_file)
+    elif emails_file:
+        await query_email_inventory(api_token, emails_file)  # Call the new function for email queries
     else:
-        logging.error("No valid operation specified. Please use --iocs or --di.")
+        logging.error("No valid operation specified. Please use --iocs, --di, or --emails.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Process Indicators of Compromise (IOCs) or query Device Software Inventory using the Microsoft Defender API.",
-        epilog="Example usage:\n  python mdelh.py --iocs path/to/iocs.txt\n  python mdelh.py --di path/to/device_names.txt"
+        description="Process Indicators of Compromise (IOCs), query Device Software Inventory, or query Device Events by email using the Microsoft Defender API.",
+        epilog="Example usage:\n  python mdelh.py --iocs path/to/iocs.txt\n  python mdelh.py --di path/to/device_names.txt\n  python mdelh.py --emails path/to/emails.txt"
     )
     parser.add_argument(
         '--iocs',
@@ -633,6 +674,11 @@ if __name__ == "__main__":
         type=str,
         help='Path to the file containing device names (one per line).'
     )
+    parser.add_argument(
+        '--emails',
+        type=str,
+        help='Path to the file containing email addresses (one per line).'
+    )
 
     args = parser.parse_args()
 
@@ -643,7 +689,7 @@ if __name__ == "__main__":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
     try:
-        asyncio.run(main(args.iocs, args.di))
+        asyncio.run(main(args.iocs, args.di, args.emails))  # Pass the emails file to the main function
     except KeyboardInterrupt:
         logging.info("Script interrupted by user.")
     except Exception as e:
