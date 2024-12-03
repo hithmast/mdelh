@@ -1,3 +1,5 @@
+Here’s the updated README based on the new code modifications:
+
 # MDE Lazy Hunter
 
 ## Overview
@@ -13,14 +15,15 @@ The **MDE Lazy Hunter** script interacts with the Microsoft Defender for Endpoin
 - **Rate Limiting**: Adheres to API rate limits of up to 45 calls per minute and 1,500 calls per hour.
 - **CSV Output**: Saves query results to a CSV file in the `results` folder.
 - **User Interrupt Handling**: Prompts the user to decide whether to continue or exit when an error occurs or when interrupted.
-- **Device Inventory Querying**: Query and export software inventory information for specified devices
-- **Robust Error Handling**: Custom exception classes for different API error scenarios
-- **Flexible Input Processing**: Support for both IOC processing and device inventory queries
-- **Windows Compatibility**: Special event loop policy for Windows systems
+- **Device Inventory Querying**: Query and export software inventory information for specified devices.
+- **Email Querying**: Queries device events based on email addresses.
+- **Robust Error Handling**: Custom exception classes for different API error scenarios.
+- **Flexible Input Processing**: Support for both IOC processing and device inventory queries.
+- **Windows Compatibility**: Special event loop policy for Windows systems.
 
 ## Prerequisites
 
-- Python 3.6 or higher
+- Python 3.7 or higher
 - Required libraries: `aiohttp`, `dateutil`, `pytz`, `aiofiles`, `argparse`
 
 Install the required libraries using:
@@ -52,7 +55,7 @@ Create a `config.json` file with the following format:
 
 ## Script Usage
 
-The script supports two main operations:
+The script supports three main operations:
 
 1. **IOC Processing**:
 ```bash
@@ -62,6 +65,11 @@ python mdelh.py --iocs path/to/IOCs.txt
 2. **Device Inventory Query**:
 ```bash
 python mdelh.py --di path/to/device_names.txt
+```
+
+3. **Email Inventory Query**:
+```bash
+python mdelh.py --emails path/to/emails.txt
 ```
 
 ## Functions
@@ -101,7 +109,7 @@ python mdelh.py --di path/to/device_names.txt
 
 - `query_device_inventory(api_token, device_names_file)`: 
   Processes a list of device names and retrieves their software inventory.
-  
+
 - `query_email_inventory(api_token, emails_file)`: 
   Queries the MDE API for device events based on email addresses.
 
@@ -164,32 +172,37 @@ flowchart TD
     A[Start] --> B[Parse Command-Line Arguments]
     B -->|--iocs| C[Process IOCs]
     B -->|--di| D[Query Device Inventory]
-    B -->|No valid operation| E[Log Error: No valid operation specified]
+    B -->|--emails| E[Query Email Inventory]
+    B -->|No valid operation| F[Log Error: No valid operation specified]
     
-    C --> F[Load Configuration]
-    D --> F
+    C --> G[Load Configuration]
+    D --> G
+    E --> G
     
-    F --> G[Load API Token]
-    G --> H[Handle Interrupt Signal]
+    G --> H[Load API Token]
+    H --> I[Handle Interrupt Signal]
     
-    C --> I[Read IOC File]
-    I --> J[Process Items]
+    C --> J[Read IOC File]
+    J --> K[Process Items]
     
-    D --> K[Read Device Names File]
-    K --> L[Fetch Device Software Inventory]
+    D --> L[Read Device Names File]
+    L --> M[Fetch Device Software Inventory]
     
-    J --> M[Query MDE]
-    L --> N[Query MDE]
+    E --> N[Read Email File]
     
-    M --> O[Handle API Response]
-    N --> O
+    K --> O[Query MDE]
+    M --> O
+    N --> P[Query MDE]
     
-    O --> P[Log Results]
-    O --> Q[Handle Errors]
+    O --> Q[Handle API Response]
+    P --> Q
     
-    P --> R[End]
-    Q --> R
-    E --> R
+    Q --> R[Log Results]
+    Q --> S[Handle Errors]
+    
+    R --> T[End]
+    S --> T
+    F --> T
 ```
 
 ## Updates and Tasks
@@ -220,6 +233,10 @@ The script generates different output files based on the operation:
    - SoftwareVersion
    - OSPlatform
    - OSVersion
+3. **Email Inventory**: Results are saved in `results/email_results.csv` with the following fields:
+   - Email
+   - DeviceId
+   - DeviceName
 
 ## Custom Exceptions
 
