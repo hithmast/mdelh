@@ -101,6 +101,9 @@ python mdelh.py --di path/to/device_names.txt
 
 - `query_device_inventory(api_token, device_names_file)`: 
   Processes a list of device names and retrieves their software inventory.
+  
+- `query_email_inventory(api_token, emails_file)`: 
+  Queries the MDE API for device events based on email addresses.
 
 ## Example
 
@@ -203,6 +206,7 @@ flowchart TD
 
 ### Completed
 - [x] Add device inventory function
+- [x] Add email querying feature
 
 ## Output Files
 
