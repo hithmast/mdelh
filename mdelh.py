@@ -332,6 +332,7 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
     query_data = {"Query": query}
     current_time = time.time()
 
+    # Rate limiting logic
     if calls_made >= MAX_CALLS_PER_MINUTE:
         elapsed_time_minute = current_time - start_time_minute
         if elapsed_time_minute < 60:
@@ -352,6 +353,11 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
                 if response.status == 401:
                     logging.error("API Key is deprecated. Please update the config.json file.")
                     sys.exit(1)
+                elif response.status == 429:
+                    wait_time = int(response.headers.get("Retry-After", backoff_factor * (attempt + 1)))
+                    logging.error("Rate limit exceeded. Retrying in %d seconds...", wait_time)
+                    await asyncio.sleep(wait_time)  # Wait for the specified time before retrying
+                    continue  # Retry the request
                 response.raise_for_status()
                 calls_made += 1
                 return await response.json()
@@ -577,6 +583,16 @@ async def query_email_inventory(api_token, emails_file: str):
         logging.error("Error reading email file '%s': %s", emails_file, e)
         return
 
+    results_folder = "results"
+    os.makedirs(results_folder, exist_ok=True)
+    csv_file_path = os.path.join(results_folder, "email_results.csv")  # Change the file name if needed
+
+    # Initialize CSV file with headers, including Email
+    fieldnames = ["Email", "DeviceId", "DeviceName"]  # Added Email to the headers
+    async with aiofiles.open(csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        await writer.writeheader()
+
     for email in emails:
         logging.info("Querying for email: %s", email)  # Log each email being processed
         kql_query = f"""
@@ -590,8 +606,18 @@ async def query_email_inventory(api_token, emails_file: str):
         }
         
         result = await execute_query(api_token, payload)  # Execute the query
-        if result:
+        if result and "Results" in result:
             logging.info("Results for %s: %s", email, result.get("Results", []))
+            # Write results to CSV
+            async with aiofiles.open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                for res_item in result["Results"]:
+                    output_data = {
+                        "Email": email,  # Include the email in the output data
+                        "DeviceId": res_item.get("DeviceId", ""),
+                        "DeviceName": res_item.get("DeviceName", "")
+                    }
+                    await writer.writerow(output_data)  # Write each result immediately
         else:
             logging.info("No results found for email: %s", email)
 
@@ -637,10 +663,20 @@ def perform_initial_checks():
     check_results_directory()
 
 # Modify the main() function to include these checks:
-async def main(iocs_file: str = None, device_names_file: str = None, emails_file: str = None):
+async def main(iocs_file: str = None, device_names_file: str = None, emails_file: str = None, api_key: str = None):
     print(BANNER)
     perform_initial_checks()
     
+    # Update config.json with the new API key if provided
+    if api_key:
+        with open('config.json', 'r+') as config_file:
+            config = json.load(config_file)
+            config['api_token'] = api_key
+            config_file.seek(0)  # Move to the beginning of the file
+            json.dump(config, config_file, indent=4)
+            config_file.truncate()  # Remove any leftover data
+            logging.info("API key updated in config.json.")
+
     config = await load_config('config.json')
     api_token = config.get("api_token")
     
@@ -679,6 +715,11 @@ if __name__ == "__main__":
         type=str,
         help='Path to the file containing email addresses (one per line).'
     )
+    parser.add_argument(
+        '--config',
+        type=str,
+        help='API key to update in config.json.'
+    )
 
     args = parser.parse_args()
 
@@ -689,7 +730,7 @@ if __name__ == "__main__":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
     try:
-        asyncio.run(main(args.iocs, args.di, args.emails))  # Pass the emails file to the main function
+        asyncio.run(main(args.iocs, args.di, args.emails, args.config))  # Pass the config argument to the main function
     except KeyboardInterrupt:
         logging.info("Script interrupted by user.")
     except Exception as e:
