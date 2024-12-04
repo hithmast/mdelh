@@ -71,7 +71,10 @@ python mdelh.py --di path/to/device_names.txt
 ```bash
 python mdelh.py --emails path/to/emails.txt
 ```
-
+4. **Add API Key**:
+```bash
+python mdelh.py --config <API-Key>
+```
 ## Functions
 
 - `convert_to_cairo_time(timestamp_str)`: 
