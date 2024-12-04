@@ -24,3 +24,22 @@ main {
 section {
     margin-bottom: 20px;
 }
+.screenshot-container {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.screenshot-container img {
+    max-width: 100%;
+}
+
+pre {
+    background-color: #f0f0f0;
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+}
+
+code {
+    font-family: monospace;
+}
