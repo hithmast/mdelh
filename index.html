@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDE Lazy Hunter - Security Tool Illustration</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <h1>MDE Lazy Hunter</h1>
+        <p>A Python Script for MDE (Microsoft Defender for Endpoint) Investigations</p>
+    </header>
+    <main>
+        <section class="overview">
+            <h2>What is MDE Lazy Hunter?</h2>
+            <p>
+                MDE Lazy Hunter is a Python script designed to automate security investigations using Microsoft Defender for Endpoint (MDE). It allows you to query the MDE API for various information, including:
+            </p>
+            <ul>
+                <li>Indicators of Compromise (IOCs) like file hashes and URLs</li>
+                <li>Device inventory details for specific devices</li>
+                <li>Events related to email addresses</li>
+            </ul>
+        </section>
+        <section class="features">
+            <h2>Key Features</h2>
+            <ul>
+                <li>Supports multiple input types: SHA256, SHA1, MD5 hashes, IPv4 addresses, URLs, and hostnames.</li>
+                <li>Asynchronous processing for efficient handling of multiple queries.</li>
+                <li>Rate limiting to comply with MDE API restrictions.</li>
+                <li>CSV output for easy data analysis and sharing.</li>
+                <li>User-friendly prompts for error handling and interruption.</li>
+                <li>Custom exception handling for better error identification.</li>
+            </ul>
+        </section>
+        <section class="usage">
+            <h2>How to Use MDE Lazy Hunter</h2>
+            <p>
+                Here's a basic overview of using the script:
+            </p>
+            <ol>
+                <li>**Install required libraries:** `aiohttp`, `dateutil`, `pytz`, `aiofiles`, `argparse` using `pip install`.</li>
+                <li>**Obtain your MDE API key:** Follow the instructions in the README to extract the API key from the Microsoft Defender API Explorer.</li>
+                <li>**Create a configuration file:** Create a `config.json` file with your API key.</li>
+                <li>**Run the script:** Use the command line with appropriate flags depending on your investigation type:
+                    <ul>
+                        <li>For IOC processing: `python mdelh.py --iocs path/to/IOCs.txt`</li>
+                        <li>For device inventory: `python mdelh.py --di path/to/device_names.txt`</li>
+                        <li>For email inventory: `python mdelh.py --emails path/to/emails.txt`</li>
+                    </ul>
+                </li>
+                <li>**Review the results:** The script will generate CSV files containing the results of your queries in the `results` folder.</li>
+            </ol>
+        </section>
+        <section class="resources">
+            <h2>Additional Resources</h2>
+            <ul>
+                <li>**GitHub Repository:** (Include link to your GitHub repository if applicable)</li>
+                <li>**MDE API Documentation:** (Include link to Microsoft documentation)</li>
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2024 MDE Lazy Hunter Development Team (optional, change if needed)</p>
+    </footer>
+</body>
+</html>
