@@ -193,43 +193,38 @@ async def load_config(config_file: str):
           return json.loads(await file.read())
 
 async def execute_query(api_token, payload):
-      """Executes a query to the Microsoft Security Center API.
-
-  Args:
-      api_token: The API token for authentication.
-      payload: The query payload as a JSON object.
-
-  Raises:
-      APIUnauthorizedError: If the API token is invalid or expired.
-      APIForbiddenError: If the API returns a 403 Forbidden response.
-      APINotFoundError: If the API returns a 404 Not Found response.
-      APIServerError: If the API returns a server error response (status code >= 500).
-      APIError: For any other unexpected API error.
-
-  Returns:
-      The JSON response from the API, or None if an error occurs.
-  """
-      headers = {
+    headers = {
         "Authorization": f"Bearer {api_token}",
-        "Content-Type": "application/json"}
-      async with aiohttp.ClientSession() as session:
-          async with session.post(API_URL, headers=headers, json=payload) as response:
-              if response.status == 200:
-                return await response.json()
-              elif response.status == 401:
-                    raise APIUnauthorizedError("The API token is invalid or expired. Please check your credentials.")
-              elif response.status == 403:
-                    error_message = await response.text()
-                    raise APIForbiddenError("403 Forbidden - %s" % error_message)
-              elif response.status == 404:
-                    error_message = await response.text()
-                    raise APINotFoundError("404 Not Found - %s" % error_message)
-              elif response.status >= 500:
-                    error_message = await response.text()
-                    raise APIServerError("500 - Server error - %s" % error_message)
-              else:
-                    error_message = await response.text()
-                    raise APIError("%s - %s" % (response.status, error_message))
+        "Content-Type": "application/json"
+    }
+    
+    while True:  # Keep trying until success or fatal error
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(API_URL, headers=headers, json=payload) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    elif response.status == 429:
+                        error_json = await response.json()
+                        wait_time = int(error_json.get("error", {}).get("message", "").split("in ")[-1].split(" ")[0])
+                        logging.warning(f"Rate limit exceeded. Waiting {wait_time} seconds...")
+                        try:
+                            await asyncio.sleep(wait_time)
+                        except asyncio.CancelledError:
+                            logging.info("Query cancelled during rate limit wait")
+                            return None
+                        continue
+                    elif response.status == 401:
+                        raise APIUnauthorizedError("The API token is invalid or expired.")
+                    else:
+                        error_message = await response.text()
+                        raise APIError(f"{response.status} - {error_message}")
+        except asyncio.CancelledError:
+            logging.info("Query cancelled by user")
+            return None
+        except Exception as e:
+            logging.error(f"Query failed: {str(e)}")
+            return None
 
 async def fetch_device_software_inventory(api_token, device_inv):
     # Construct the KQL query
@@ -238,7 +233,6 @@ async def fetch_device_software_inventory(api_token, device_inv):
     | where DeviceName contains "{device_inv}"
     | project DeviceId, DeviceName, SoftwareName, SoftwareVersion, OSPlatform, OSVersion
     | order by DeviceName asc
-    | limit 1000
     """
     
     # Ensure the payload is correctly structured
@@ -247,6 +241,79 @@ async def fetch_device_software_inventory(api_token, device_inv):
     }
     
     return await execute_query(api_token, payload)  # Pass the payload to execute_query
+
+async def fetch_accountupn(api_token, device_names_file: str):
+    """Fetches the Account UPN for devices listed in the provided file."""
+    if not os.path.isfile(device_names_file):
+        logging.error(f"Device names file '{device_names_file}' does not exist.")
+        return None
+
+    # Read device names from the file
+    async with aiofiles.open(device_names_file, 'r') as file:
+        device_names = [line.strip() for line in await file.readlines()]
+
+    results = []  # To store results for each device
+    successful_fetches = 0  # Counter for successful fetches
+    total_devices = len(device_names)  # Total devices to process
+
+    # Construct and execute the KQL query for each device name
+    for device_name in device_names:
+        kql_query = f"""
+        DeviceInfo
+        | where DeviceName startswith "{device_name}"
+        | join kind=inner (DeviceLogonEvents | project DeviceId, InitiatingProcessAccountUpn) on DeviceId
+        | distinct DeviceName, InitiatingProcessAccountUpn
+        """
+        
+        # Ensure the payload is correctly structured
+        payload = {
+            "Query": kql_query  # Ensure the query is included in the payload
+        }
+
+        logging.info("Executing fetch_accountupn for device: %s", device_name)  # Log the device name being queried
+        
+        for attempt in range(5):  # Retry up to 5 times
+            try:
+                result = await execute_query(api_token, payload)  # Pass the payload to execute_query
+
+                if result and "Results" in result:
+                    logging.info("Successfully fetched AccountUpn for device: %s", device_name)  # Log success
+                    results.append(result)  # Store the result for this device
+                    successful_fetches += 1  # Increment successful fetch counter
+                    break  # Exit the retry loop on success
+                elif result and result.get("error", {}).get("code") == "TooManyRequests":
+                    wait_time = int(result.get("error", {}).get("message", "60").split(" ")[-2])  # Extract wait time from message
+                    logging.warning("Rate limit exceeded. Waiting for %d seconds before retrying...", wait_time)
+                    await asyncio.sleep(wait_time)  # Wait before retrying
+                else:
+                    logging.warning("No results found for device: %s", device_name)  # Log if no results found
+                    break  # Exit the retry loop on other errors
+            except Exception as e:
+                logging.error(f"Attempt {attempt + 1} failed: {str(e)}")
+                if attempt == 4:  # Last attempt
+                    logging.error("All retry attempts failed")
+
+    # Write results to a CSV file
+    results_file_path = "results/account_upn_results.csv"
+    fieldnames = ["DeviceName", "AccountUpn"]  # Adjust based on the structure of your results
+
+    async with aiofiles.open(results_file_path, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        await writer.writeheader()  # Write the header row
+
+        for result in results:
+            for item in result.get("Results", []):
+                output_data = {
+                    "DeviceName": item.get("DeviceName", ""),
+                    "AccountUpn": item.get("InitiatingProcessAccountUpn", "")
+                }
+                await writer.writerow(output_data)  # Write each result to the CSV file
+
+    logging.info("Results written to %s", results_file_path)  # Log the file path where results are saved
+
+    # Log statistics after processing
+    logging.info("Finished processing. Total devices: %d, Successful fetches: %d", total_devices, successful_fetches)
+    return results  # Return all results collected
 
 async def query_device_inventory(api_token, device_names_file):
     logging.info("Starting query_device_inventory with file: %s", device_names_file)  # Log start of function
@@ -321,8 +388,32 @@ async def query_device_inventory(api_token, device_names_file):
             except APIError as e:
                 print(e)
 
-async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, retries: int = 10, backoff_factor: int = 5) -> Optional[dict]:
+async def wait_if_needed():
+    """Handles waiting based on rate limits."""
     global calls_made, start_time_minute, start_time_hour
+    current_time = time.time()
+
+    # Rate limiting logic
+    if calls_made >= MAX_CALLS_PER_MINUTE:
+        elapsed_time_minute = current_time - start_time_minute
+        if elapsed_time_minute < 60:
+            wait_time = 60 - elapsed_time_minute
+            logging.info("Waiting for %d seconds to respect the rate limit...", wait_time)
+            await asyncio.sleep(wait_time)
+        start_time_minute = time.time()
+        calls_made = 0
+
+    if calls_made >= MAX_CALLS_PER_HOUR:
+        elapsed_time_hour = current_time - start_time_hour
+        if elapsed_time_hour < 3600:
+            wait_time = 3600 - elapsed_time_hour
+            logging.info("Waiting for %d seconds to respect the hourly rate limit...", wait_time)
+            await asyncio.sleep(wait_time)
+        start_time_hour = time.time()
+        calls_made = 0
+
+async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, retries: int = 10, backoff_factor: int = 5) -> Optional[dict]:
+    global calls_made
 
     headers = {
         "Authorization": f"Bearer {api_token}",
@@ -330,22 +421,8 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
     }
 
     query_data = {"Query": query}
-    current_time = time.time()
 
-    # Rate limiting logic
-    if calls_made >= MAX_CALLS_PER_MINUTE:
-        elapsed_time_minute = current_time - start_time_minute
-        if elapsed_time_minute < 60:
-            await asyncio.sleep(60 - elapsed_time_minute)
-        start_time_minute = time.time()
-        calls_made = 0
-
-    if calls_made >= MAX_CALLS_PER_HOUR:
-        elapsed_time_hour = current_time - start_time_hour
-        if elapsed_time_hour < 3600:
-            await asyncio.sleep(3600 - elapsed_time_hour)
-        start_time_hour = time.time()
-        calls_made = 0
+    await wait_if_needed()  # Call the wait function before making the request
 
     for attempt in range(retries):
         try:
@@ -354,36 +431,31 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
                     logging.error("API Key is deprecated. Please update the config.json file.")
                     sys.exit(1)
                 elif response.status == 429:
+                    # Get retry-after value from headers, default to calculated backoff
                     wait_time = int(response.headers.get("Retry-After", backoff_factor * (attempt + 1)))
-                    logging.error("Rate limit exceeded. Retrying in %d seconds...", wait_time)
-                    await asyncio.sleep(wait_time)  # Wait for the specified time before retrying
-                    continue  # Retry the request
+                    logging.warning(f"Rate limit exceeded (429). Waiting {wait_time} seconds before retry {attempt + 1}/{retries}")
+                    await asyncio.sleep(wait_time)
+                    continue
+                
                 response.raise_for_status()
                 calls_made += 1
                 return await response.json()
-        except aiohttp.ClientError as e:
-            logging.error("Error querying MDE: %s", e)
-            if isinstance(e, aiohttp.ClientConnectionError):
-                logging.error("Connection error occurred. Retrying...")
-            elif isinstance(e, aiohttp.ClientTimeout):
-                logging.error("Request timed out. Retrying...")
-            elif hasattr(e, 'status') and e.status == 429:
-                wait_time = backoff_factor * (attempt + 1)
-                logging.error("Rate limit exceeded. Retrying in %d seconds...", wait_time)
+                
+        except aiohttp.ClientResponseError as e:
+            if e.status == 429:
+                wait_time = int(e.headers.get("Retry-After", backoff_factor * (attempt + 1)))
+                logging.warning(f"Rate limit exceeded (429). Waiting {wait_time} seconds before retry {attempt + 1}/{retries}")
                 await asyncio.sleep(wait_time)
                 continue
-            elif hasattr(e, 'status') and e.status == 502:
-                logging.error("Bad Gateway error occurred. This may be a temporary issue. Retrying...")
-                wait_time = backoff_factor * (attempt + 1)
-                await asyncio.sleep(wait_time)
-                continue
-            else:
-                logging.error("An unexpected error occurred: %s. Continuing to the next query...", e)
-                return None
-
+            logging.error(f"Request failed with status {e.status}: {str(e)}")
+            
         except Exception as e:
-            logging.error("An unexpected error occurred: %s. Continuing to the next query...", e)
-            return None
+            logging.error(f"Attempt {attempt + 1} failed: {str(e)}")
+            if attempt == retries - 1:
+                logging.error("All retry attempts failed")
+                return None
+            await asyncio.sleep(backoff_factor * (attempt + 1))
+            
     return None
 
 async def process_items(items: list, api_token: str):
@@ -406,129 +478,27 @@ async def process_items(items: list, api_token: str):
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         await writer.writeheader()
 
-    query_mapping = {
-        "SHA256": lambda item: f"""
-            DeviceFileEvents
-            | where SHA256 == '{item}'
-            | project Timestamp, DeviceName, DeviceId, FileName, FolderPath, FileSize, SHA256, SHA1, MD5, InitiatingProcessFileName, InitiatingProcessCommandLine
-            | limit 1000
-        """,
-        "SHA1": lambda item: f"""
-            DeviceFileEvents
-            | where SHA1 == '{item}'
-            | project Timestamp, DeviceName, DeviceId, FileName, FolderPath, FileSize, SHA256, SHA1, MD5, InitiatingProcessFileName, InitiatingProcessCommandLine
-            | limit 1000
-        """,
-        "MD5": lambda item: f"""
-            DeviceFileEvents
-            | where MD5 == '{item}'
-            | project Timestamp, DeviceName, DeviceId, FileName, FolderPath, FileSize, SHA256, SHA1, MD5, InitiatingProcessFileName, InitiatingProcessCommandLine
-            | limit 1000
-        """,
-        "RemoteIP": lambda item: f"""
-            DeviceNetworkEvents
-            | where RemoteIP == '{item}'
-            | project Timestamp, DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemotePort, RemoteUrl, LocalIP, LocalPort, Protocol
-            | limit 1000
-        """,
-        "RemoteUrl": lambda item: f"""
-            DeviceNetworkEvents
-            | where RemoteUrl contains '{item}'
-            | project Timestamp, DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemotePort, RemoteUrl, LocalIP, LocalPort, Protocol
-            | limit 1000
-        """,
-        "LocalIP": lambda item: f"""
-            DeviceNetworkEvents
-            | where LocalIP == '{item}'
-            | project Timestamp, DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteIP, RemotePort, RemoteUrl, LocalIP, LocalPort, Protocol
-            | limit 1000
-        """
-    }
-
-    def get_query(item: str) -> str:
-        if not item:
-            logging.warning("Received an empty item. Skipping...")
-            return ""
-        if is_sha256(item):
-            query_counts["SHA256"] += 1
-            return query_mapping["SHA256"](item)
-        elif is_sha1(item):
-            query_counts["SHA1"] += 1
-            return query_mapping["SHA1"](item)
-        elif is_md5(item):
-            query_counts["MD5"] += 1
-            return query_mapping["MD5"](item)
-        elif is_ipv4(item):
-            query_counts["RemoteIP"] += 1
-            return query_mapping["RemoteIP"](item)
-        elif is_private_ipv4(item):
-            query_counts["LocalIP"] += 1
-            return query_mapping["LocalIP"](item)
-        elif is_url(item) or is_hostname(item):
-            query_counts["RemoteUrl"] += 1
-            return query_mapping["RemoteUrl"](item)
-        else:
-            logging.warning("Invalid item format: %s", item)
-            return ""
-
-    async def process_item(session: aiohttp.ClientSession, item: str):
-        nonlocal query_count, critical_error_occurred
-        if critical_error_occurred or interrupt_occurred:
-            return
-        
-        query = get_query(item)
-        if not query:
-            return
-        
-        query_count += 1
-        result = await query_mde(session, api_token, query)
-        if result is None:
-            logging.error("Failed to get result for query: %s. Stopping further processing.", query)
-            critical_error_occurred = True
-            return
-
-        # Check for interrupt before processing results
-        if interrupt_occurred:
-            user_input = input("An error occurred. Do you want to continue processing? (y/n): ")
-            if user_input.lower() != 'y':
-                logging.info("Exiting as per user request.")
-                sys.exit()
-
-        # Process results
-        if "Results" in result and result["Results"]:
-            async with aiofiles.open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                
-                for res_item in result["Results"]:
-                    if interrupt_occurred:
-                        return
-
-                    output_data = {
-                        "Timestamp": convert_to_cairo_time(res_item.get("Timestamp", "")),
-                        "DeviceName": res_item.get("DeviceName", ""),
-                        "DeviceId": res_item.get("DeviceId", ""),
-                        "RemoteIP": res_item.get("RemoteIP", ""),
-                        "RemoteUrl": res_item.get("RemoteUrl", ""),
-                        "FileName": res_item.get("FileName", ""),
-                        "FolderPath": res_item.get("FolderPath", ""),
-                        "FileSize": res_item.get("FileSize", ""),
-                        "SHA256": res_item.get("SHA256", ""),
-                        "SHA1": res_item.get("SHA1", ""),
-                        "FileType": res_item.get("FileType", ""),
-                        "LocalIP": res_item.get("LocalIP", ""),
-                        "InitiatingProcessFileName": res_item.get("InitiatingProcessFileName", ""),
-                        "InitiatingProcessCommandLine": res_item.get("InitiatingProcessCommandLine", "")
-                    }
-                    await writer.writerow(output_data)
-        else:
-            logging.info("No results found for query: %s", query)
-
     async with aiohttp.ClientSession() as session:
         for item in items:
             if interrupt_occurred:
                 logging.info("Exiting due to user interrupt during item processing.")
-                break
-            await process_item(session, item)
+                return  # Exit the function gracefully
+            logging.info("Processing item: %s", item)  # Log each item being processed
+            # Replace process_item call with the actual query logic
+            if not item:
+                continue
+                
+            query = get_query(item)
+            if query:
+                query_count += 1
+                result = await query_mde(session, api_token, query)
+                if result and "Results" in result:
+                    async with aiofiles.open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
+                        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                        for res_item in result["Results"]:
+                            await writer.writerow({
+                                field: res_item.get(field, "") for field in fieldnames
+                            })
 
         for query_type, count in query_counts.items():
             logging.info("Total queries for %s: %d", query_type, count)
@@ -541,9 +511,15 @@ async def process_items(items: list, api_token: str):
             logging.error("Critical error occurred during processing.")
 
 def handle_interrupt(signum, frame):
+    """Handle interrupt signal (Ctrl+C)"""
     global interrupt_occurred
-    interrupt_occurred = True  # Set the flag when interrupted
-    logging.info("Script interrupted by user. Exiting...")
+    if not interrupt_occurred:  # Only print message on first interrupt
+        interrupt_occurred = True
+        print("\nReceived interrupt signal. Gracefully shutting down...")
+        print("Press Ctrl+C again to force quit")
+    else:
+        print("\nForce quitting...")
+        sys.exit(1)
 
 async def process_iocs(iocs_file: str, api_token: str):
     if not os.path.isfile(iocs_file):
@@ -623,24 +599,23 @@ async def query_email_inventory(api_token, emails_file: str):
 
 # Add this after the imports
 BANNER = r"""
-███╗   ███╗██████╗ ███████╗██╗     ██╗  ██╗
+███╗   ███╗██████╗ ███████╗██      ██╗  ██╗
 ████╗ ████║██╔══██╗██╔════╝██║     ██║  ██║
 ██╔████╔██║██║  ██║█████╗  ██║     ███████║
 ██║╚██╔╝██║██║  ██║██╔══╝  ██║     ██╔══██║
 ██║ ╚═╝ ██║██████╔╝███████╗███████╗██║  ██║
-╚═╝     ╚═╝╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
+╚═╝     ╚═╝╚═════╚══════╝╚════╝╚═╝ ╚═╝  ╚═╝
 ------------------------------                                           
 Microsoft Defender Lazy Hunter
 Author: Aly Emara
-Version: 1.0.0
+Version: 1.0.1
 ------------------------------
 """
 
 def check_python_version():
-    """Check if Python version is 3.7 or higher."""
+    """Validate if Python version is 3.7 or higher."""
     if sys.version_info < (3, 7):
-        print("Error: Python 3.7 or higher is required")
-        sys.exit(1)
+        raise ValueError("Python 3.7 or higher is required")
 
 def check_config_exists():
     """Check if config.json exists."""
@@ -662,10 +637,35 @@ def perform_initial_checks():
     check_config_exists()
     check_results_directory()
 
+def get_query(item: str) -> str:
+    """Generate appropriate KQL query based on item type."""
+    if is_sha256(item):
+        query_counts["SHA256"] += 1
+        return f"""DeviceFileEvents | where SHA256 == '{item}'"""
+    elif is_sha1(item):
+        query_counts["SHA1"] += 1
+        return f"""DeviceFileEvents | where SHA1 == '{item}'"""
+    elif is_md5(item):
+        query_counts["MD5"] += 1
+        return f"""DeviceFileEvents | where MD5 == '{item}'"""
+    elif is_ipv4(item):
+        query_counts["RemoteIP"] += 1
+        return f"""DeviceNetworkEvents | where RemoteIP == '{item}'"""
+    elif is_private_ipv4(item):
+        query_counts["LocalIP"] += 1
+        return f"""DeviceNetworkEvents | where LocalIP == '{item}'"""
+    elif is_url(item) or is_hostname(item):
+        query_counts["RemoteUrl"] += 1
+        return f"""DeviceNetworkEvents | where RemoteUrl contains '{item}'"""
+    return ""
+
 # Modify the main() function to include these checks:
-async def main(iocs_file: str = None, device_names_file: str = None, emails_file: str = None, api_key: str = None):
+async def main(iocs_file: str = None, device_names_file: str = None, emails_file: str = None, api_key: str = None, dev_names_upn: str = None):
+    """Main entry point for the script."""
     print(BANNER)
     perform_initial_checks()
+    
+    #print(f"Arguments received: iocs_file={iocs_file}, device_names_file={device_names_file}, emails_file={emails_file}, api_key={api_key}, dev_names_upn={dev_names_upn}")
     
     # Update config.json with the new API key if provided
     if api_key:
@@ -684,21 +684,33 @@ async def main(iocs_file: str = None, device_names_file: str = None, emails_file
         logging.error("API token not found in config.json")
         return
 
+    # Set up signal handlers
     signal.signal(signal.SIGINT, handle_interrupt)
+    signal.signal(signal.SIGTERM, handle_interrupt)
 
-    if iocs_file:
-        await process_iocs(iocs_file, api_token)
-    elif device_names_file:
-        await query_device_inventory(api_token, device_names_file)
-    elif emails_file:
-        await query_email_inventory(api_token, emails_file)  # Call the new function for email queries
-    else:
-        logging.error("No valid operation specified. Please use --iocs, --di, or --emails.")
+    try:
+        if iocs_file:
+            await process_iocs(iocs_file, api_token)
+        elif device_names_file:
+            await query_device_inventory(api_token, device_names_file)
+        elif emails_file:
+            await query_email_inventory(api_token, emails_file)
+        elif dev_names_upn:
+            await fetch_accountupn(api_token, dev_names_upn)
+        else:
+            logging.error("No valid operation specified. Please use --iocs, --di, or --emails or --diupn.")
+    except KeyboardInterrupt:
+        logging.info("Script interrupted by user. Exiting...")
+    except Exception as e:
+        logging.error("An error occurred: %s", str(e))
+    finally:
+        if interrupt_occurred:
+            sys.exit(0)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Process Indicators of Compromise (IOCs), query Device Software Inventory, or query Device Events by email using the Microsoft Defender API.",
-        epilog="Example usage:\n  python mdelh.py --iocs path/to/iocs.txt\n  python mdelh.py --di path/to/device_names.txt\n  python mdelh.py --emails path/to/emails.txt"
+        description="Process Indicators of Compromise (IOCs), query Device Software Inventory, or query Device Events by email using the Microsoft Defender API. or query AccountUPN from Device Name.",
+        epilog="Example usage:\n  python mdelh.py --iocs path/to/iocs.txt\n  python mdelh.py --di path/to/device_names.txt\n  python mdelh.py --emails path/to/emails.txt\n --diupn path/to/device_names.txt"
     )
     parser.add_argument(
         '--iocs',
@@ -720,6 +732,11 @@ if __name__ == "__main__":
         type=str,
         help='API key to update in config.json.'
     )
+    parser.add_argument(
+        '--diupn',
+        type=str,
+        help='Path to the file containing device names (one per line)'
+    )
 
     args = parser.parse_args()
 
@@ -730,7 +747,7 @@ if __name__ == "__main__":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
     try:
-        asyncio.run(main(args.iocs, args.di, args.emails, args.config))  # Pass the config argument to the main function
+        asyncio.run(main(args.iocs, args.di, args.emails, args.config, args.diupn))  # Pass the config argument to the main function
     except KeyboardInterrupt:
         logging.info("Script interrupted by user.")
     except Exception as e:
