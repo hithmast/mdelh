@@ -510,7 +510,7 @@ async def process_items(items: list, api_token: str):
         if query_count > 0 and critical_error_occurred:
             logging.error("Critical error occurred during processing.")
 
-def handle_interrupt(signum, frame):
+def handle_interrupt(loop):
     """Handle interrupt signal (Ctrl+C)"""
     global interrupt_occurred
     if not interrupt_occurred:  # Only print message on first interrupt
@@ -520,6 +520,18 @@ def handle_interrupt(signum, frame):
     else:
         print("\nForce quitting...")
         sys.exit(1)
+    try:
+        # Cancel all tasks
+        for task in asyncio.all_tasks(loop):
+            task.cancel()
+        # Wait for all tasks to be cancelled
+        loop.run_until_complete(asyncio.gather(*asyncio.all_tasks(loop), return_exceptions=True))
+    except Exception as e:
+        print(f"Error during shutdown: {e}")
+    finally:
+        # Ensure the loop is closed
+        loop.close()
+        sys.exit(0)  # Exit gracefully
 
 async def process_iocs(iocs_file: str, api_token: str):
     if not os.path.isfile(iocs_file):
@@ -539,11 +551,11 @@ async def process_iocs(iocs_file: str, api_token: str):
         logging.info("Script interrupted by user.")
 
 async def query_email_inventory(api_token, emails_file: str):
-    """Queries the Microsoft Security Center API for device events based on email addresses.
+    """Queries the Microsoft Security Center API for device events based on email addresses or usernames.
 
     Args:
         api_token: The API token for authentication.
-        emails_file: The path to the file containing email addresses (one per line).
+        emails_file: The path to the file containing email addresses or usernames (one per line).
 
     Returns:
         None
@@ -554,7 +566,7 @@ async def query_email_inventory(api_token, emails_file: str):
 
     try:
         async with aiofiles.open(emails_file, 'r') as file:
-            emails = [line.strip() for line in await file.readlines()]
+            identifiers = [line.strip() for line in await file.readlines()]
     except Exception as e:
         logging.error("Error reading email file '%s': %s", emails_file, e)
         return
@@ -563,18 +575,23 @@ async def query_email_inventory(api_token, emails_file: str):
     os.makedirs(results_folder, exist_ok=True)
     csv_file_path = os.path.join(results_folder, "email_results.csv")  # Change the file name if needed
 
-    # Initialize CSV file with headers, including Email
-    fieldnames = ["Email", "DeviceId", "DeviceName"]  # Added Email to the headers
+    # Initialize CSV file with headers, including Email/Username
+    fieldnames = ["Identifier", "DeviceId", "DeviceName"]  # Changed Email to Identifier
     async with aiofiles.open(csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         await writer.writeheader()
 
-    for email in emails:
-        logging.info("Querying for email: %s", email)  # Log each email being processed
+    for identifier in identifiers:
+        if '@' in identifier:
+            username = identifier.split('@')[0]  # Extract the username from the email
+        else:
+            username = identifier  # Use the identifier as is if it's not an email
+
+        logging.info("Querying for username: %s", username)  # Log each username being processed
         kql_query = f"""
-        DeviceEvents 
-        | where InitiatingProcessAccountUpn == "{email}"
-        | distinct DeviceId, DeviceName
+        DeviceInfo 
+        | where LoggedOnUsers contains "{username}"
+        | distinct DeviceName
         """
         
         payload = {
@@ -583,19 +600,19 @@ async def query_email_inventory(api_token, emails_file: str):
         
         result = await execute_query(api_token, payload)  # Execute the query
         if result and "Results" in result:
-            logging.info("Results for %s: %s", email, result.get("Results", []))
+            logging.info("Results for %s: %s", username, result.get("Results", []))
             # Write results to CSV
             async with aiofiles.open(csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 for res_item in result["Results"]:
                     output_data = {
-                        "Email": email,  # Include the email in the output data
+                        "Identifier": identifier,  # Include the original identifier in the output data
                         "DeviceId": res_item.get("DeviceId", ""),
                         "DeviceName": res_item.get("DeviceName", "")
                     }
                     await writer.writerow(output_data)  # Write each result immediately
         else:
-            logging.info("No results found for email: %s", email)
+            logging.info("No results found for username: %s", username)
 
 # Add this after the imports
 BANNER = r"""
