@@ -245,7 +245,7 @@ async def fetch_device_software_inventory(api_token, device_inv):
 async def fetch_accountupn(api_token, device_names_file: str):
     """Fetches the Account UPN for devices listed in the provided file."""
     if not os.path.isfile(device_names_file):
-        logging.error(f"Device names file '{device_names_file}' does not exist.")
+        logging.error(f"Device names file '%s' does not exist.")
         return None
 
     # Read device names from the file
@@ -318,7 +318,7 @@ async def fetch_accountupn(api_token, device_names_file: str):
 async def query_device_inventory(api_token, device_names_file):
     logging.info("Starting query_device_inventory with file: %s", device_names_file)  # Log start of function
     if not os.path.isfile(device_names_file):
-        logging.error(f"Device names file '{device_names_file}' does not exist.")
+        logging.error(f"Device names file '%s' does not exist.")
         return
 
     async with aiofiles.open(device_names_file, 'r') as file:
@@ -345,7 +345,7 @@ async def query_device_inventory(api_token, device_names_file):
             logging.warning("Permission denied for file '%s'. Retrying in 1 second...", inventory_results_file)
             await asyncio.sleep(1)  # Wait before retrying
     else:
-        logging.error(f"Failed to open file '{inventory_results_file}' after multiple attempts.")
+        logging.error(f"Failed to open file '%s' after multiple attempts.")
         return  # Exit if unable to open the file
 
     for device_name in device_names:
