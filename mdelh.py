@@ -37,7 +37,7 @@ query_counts = {
 }
 
 # Global variable to track if an interrupt has occurred
-interrupt_occurred = False
+INTERRUPT_OCCURRED= False
 
 # Custom exceptions for different error scenarios
 class APIUnauthorizedError(Exception):
@@ -333,7 +333,7 @@ async def query_device_inventory(api_token, device_names_file):
 
     # Retry logic for opening the CSV file
     for _ in range(5):  # Retry up to 5 times
-        if interrupt_occurred:
+        if INTERRUPT_OCCURRED:
             logging.info("Exiting due to user interrupt during file opening.")
             return
         try:
@@ -349,7 +349,7 @@ async def query_device_inventory(api_token, device_names_file):
         return  # Exit if unable to open the file
 
     for device_name in device_names:
-        if interrupt_occurred:
+        if INTERRUPT_OCCURRED:
             logging.info("Exiting due to user interrupt during device processing.")
             return
 
@@ -361,7 +361,7 @@ async def query_device_inventory(api_token, device_names_file):
                 if result:
                     # Write each result to the CSV file
                     for item in result.get("Results", []):
-                        if interrupt_occurred:
+                        if INTERRUPT_OCCURRED:
                             logging.info("Exiting due to user interrupt during result processing.")
                             return
 
@@ -480,7 +480,7 @@ async def process_items(items: list, api_token: str):
 
     async with aiohttp.ClientSession() as session:
         for item in items:
-            if interrupt_occurred:
+            if INTERRUPT_OCCURRED:
                 logging.info("Exiting due to user interrupt during item processing.")
                 return  # Exit the function gracefully
             logging.info("Processing item: %s", item)  # Log each item being processed
@@ -512,9 +512,9 @@ async def process_items(items: list, api_token: str):
 
 def handle_interrupt(loop):
     """Handle interrupt signal (Ctrl+C)"""
-    global interrupt_occurred
-    if not interrupt_occurred:  # Only print message on first interrupt
-        interrupt_occurred = True
+    global INTERRUPT_OCCURRED
+    if not INTERRUPT_OCCURRED:  # Only print message on first interrupt
+        INTERRUPT_OCCURRED= True
         print("\nReceived interrupt signal. Gracefully shutting down...")
         print("Press Ctrl+C again to force quit")
     else:
@@ -522,7 +522,7 @@ def handle_interrupt(loop):
         sys.exit(1)
     try:
         # Cancel all tasks
-        for task in asyncio.all_tasks(loop):
+        for task in asyncio.Task.all_tasks(loop):
             task.cancel()
         # Wait for all tasks to be cancelled
         loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks(), return_exceptions=True))
@@ -719,7 +719,7 @@ async def main(iocs_file: str = None, device_names_file: str = None, emails_file
     except Exception as e:
         logging.error("An error occurred: %s", str(e))
     finally:
-        if interrupt_occurred:
+        if INTERRUPT_OCCURRED:
             sys.exit(0)
 
 if __name__ == "__main__":
