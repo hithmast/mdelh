@@ -22,9 +22,9 @@ MAX_CALLS_PER_MINUTE = 45
 MAX_CALLS_PER_HOUR = 1500
 
 # Global variables for rate limiting
-calls_made = 0
-start_time_minute = time.time()
-start_time_hour = time.time()
+CALLS_MADE = 0
+START_TIME_MINUTE = time.time()
+START_TIME_HOUR = time.time()
 
 # Counters for each query type
 query_counts = {
@@ -390,30 +390,30 @@ async def query_device_inventory(api_token, device_names_file):
 
 async def wait_if_needed():
     """Handles waiting based on rate limits."""
-    global calls_made, start_time_minute, start_time_hour
+    global CALLS_MADE, START_TIME_MINUTE, START_TIME_HOUR
     current_time = time.time()
 
     # Rate limiting logic
-    if calls_made >= MAX_CALLS_PER_MINUTE:
-        elapsed_time_minute = current_time - start_time_minute
+    if CALLS_MADE >= MAX_CALLS_PER_MINUTE:
+        elapsed_time_minute = current_time - START_TIME_MINUTE
         if elapsed_time_minute < 60:
             wait_time = 60 - elapsed_time_minute
             logging.info("Waiting for %d seconds to respect the rate limit...", wait_time)
             await asyncio.sleep(wait_time)
-        start_time_minute = time.time()
-        calls_made = 0
+        START_TIME_MINUTE = time.time()
+        CALLS_MADE = 0
 
-    if calls_made >= MAX_CALLS_PER_HOUR:
-        elapsed_time_hour = current_time - start_time_hour
+    if CALLS_MADE >= MAX_CALLS_PER_HOUR:
+        elapsed_time_hour = current_time - START_TIME_HOUR
         if elapsed_time_hour < 3600:
             wait_time = 3600 - elapsed_time_hour
             logging.info("Waiting for %d seconds to respect the hourly rate limit...", wait_time)
             await asyncio.sleep(wait_time)
-        start_time_hour = time.time()
-        calls_made = 0
+        START_TIME_HOUR = time.time()
+        CALLS_MADE = 0
 
 async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, retries: int = 10, backoff_factor: int = 5) -> Optional[dict]:
-    global calls_made
+    global CALLS_MADE
 
     headers = {
         "Authorization": f"Bearer {api_token}",
@@ -438,7 +438,7 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
                     continue
                 
                 response.raise_for_status()
-                calls_made += 1
+                CALLS_MADE += 1
                 return await response.json()
                 
         except aiohttp.ClientResponseError as e:
