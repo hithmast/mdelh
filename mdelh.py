@@ -681,9 +681,7 @@ async def main(iocs_file: str = None, device_names_file: str = None, emails_file
     """Main entry point for the script."""
     print(BANNER)
     perform_initial_checks()
-    
-    #print(f"Arguments received: iocs_file={iocs_file}, device_names_file={device_names_file}, emails_file={emails_file}, api_key={api_key}, dev_names_upn={dev_names_upn}")
-    
+    print(f"Arguments received: iocs_file={iocs_file}, device_names_file={device_names_file}, emails_file={emails_file}, api_key={api_key}, dev_names_upn={dev_names_upn}")
     # Update config.json with the new API key if provided
     if api_key:
         with open('config.json', 'r+') as config_file:
