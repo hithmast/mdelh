@@ -273,26 +273,25 @@ async def fetch_accountupn(api_token, device_names_file: str):
         logging.info("Executing fetch_accountupn for device: %s", device_name)  # Log the device name being queried
         
         for attempt in range(5):  # Retry up to 5 times
-    try:
-        result = await execute_query(api_token, payload)  # Pass the payload to execute_query
+            try:
+                result = await execute_query(api_token, payload)  # Pass the payload to execute_query
+                if result and "Results" in result:
+                    logging.info("Successfully fetched AccountUpn for device: %s", device_name)  # Log success
+                    results.append(result)  # Store the result for this device
+                    successful_fetches += 1  # Increment successful fetch counter
+                    break  # Exit the retry loop on success
+                elif result and result.get("error", {}).get("code") == "TooManyRequests":
+                    wait_time = int(result.get("error", {}).get("message", "60").split(" ")[-2])  # Extract wait time from message
+                    logging.warning("Rate limit exceeded. Waiting for %d seconds before retrying...", wait_time)
+                    await asyncio.sleep(wait_time)  # Wait before retrying
+                else:
+                    logging.warning("No results found for device: %s", device_name)  # Log if no results found
+                    break  # Exit the retry loop on other errors
 
-        if result and "Results" in result:
-            logging.info("Successfully fetched AccountUpn for device: %s", device_name)  # Log success
-            results.append(result)  # Store the result for this device
-            successful_fetches += 1  # Increment successful fetch counter
-            break  # Exit the retry loop on success
-        elif result and result.get("error", {}).get("code") == "TooManyRequests":
-            wait_time = int(result.get("error", {}).get("message", "60").split(" ")[-2])  # Extract wait time from message
-            logging.warning("Rate limit exceeded. Waiting for %d seconds before retrying...", wait_time)
-            await asyncio.sleep(wait_time)  # Wait before retrying
-        else:
-            logging.warning("No results found for device: %s", device_name)  # Log if no results found
-            break  # Exit the retry loop on other errors
-
-except Exception as e:
-    logging.error(f"Attempt {attempt + 1} failed: {str(e)}")
-    if attempt == 4:  # Last attempt
-        logging.error("All retry attempts failed")
+            except Exception as e:
+                logging.error(f"Attempt {attempt + 1} failed: {str(e)}")
+                if attempt == 4:  # Last attempt
+                    logging.error("All retry attempts failed")
 
     # Write results to a CSV file
     results_file_path = "results/account_upn_results.csv"
