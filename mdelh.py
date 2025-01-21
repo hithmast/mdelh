@@ -1,4 +1,5 @@
 import json
+import csv
 import aiohttp
 import asyncio
 import time
@@ -7,7 +8,6 @@ import re
 import signal
 import sys
 import os
-import csv
 import ipaddress
 import aiofiles
 from dateutil.parser import parse
@@ -74,8 +74,8 @@ def convert_to_cairo_time(timestamp_str: str) -> str:
     cairo_tz = pytz.timezone('Africa/Cairo')
     cairo_dt = utc_dt.astimezone(cairo_tz)
     return cairo_dt.strftime("%Y-%m-%d %H:%M:%S")
-  except ValueError as e:
-    logging.error("Error converting timestamp: %s, Error: %s", timestamp_str, e)
+  except ValueError as e_error:
+    logging.error("Error converting timestamp: %s, Error: %s", timestamp_str, e_error)
     return ""
 
 # Validation functions
@@ -122,8 +122,8 @@ def is_ipv4(value: str) -> bool:
       True if the value is a valid non-private IPv4 address, False otherwise.
   """
   try:
-    ip = ipaddress.ip_address(value)
-    return isinstance(ip, ipaddress.IPv4Address) and not ip.is_private
+    ip_addr = ipaddress.ip_address(value)
+    return isinstance(ip_addr, ipaddress.IPv4Address) and not ip_addr.is_private
   except ValueError:
     return False
 
@@ -137,8 +137,8 @@ def is_private_ipv4(value: str) -> bool:
       True if the value is a valid private IPv4 address, False otherwise.
   """
     try:
-        ip = ipaddress.ip_address(value)
-        return isinstance(ip, ipaddress.IPv4Address) and ip.is_private
+        ip_addr = ipaddress.ip_address(value)
+        return isinstance(ip_addr, ipaddress.IPv4Address) and ip_addr.is_private
     except ValueError:
         return False
 
@@ -222,8 +222,8 @@ async def execute_query(api_token, payload):
         except asyncio.CancelledError:
             logging.info("Query cancelled by user")
             return None
-        except Exception as e:
-            logging.error(f"Query failed: {str(e)}")
+        except Exception as e_error:
+            logging.error(f"Query failed: {str(e_error)}")
             return None
 
 async def fetch_device_software_inventory(api_token, device_inv):
@@ -245,7 +245,7 @@ async def fetch_device_software_inventory(api_token, device_inv):
 async def fetch_accountupn(api_token, device_names_file: str):
     """Fetches the Account UPN for devices listed in the provided file."""
     if not os.path.isfile(device_names_file):
-        logging.error(f"Device names file '%s' does not exist.")
+        logging.error("Device names file '%s' does not exist.")
         return None
 
     # Read device names from the file
@@ -288,8 +288,8 @@ async def fetch_accountupn(api_token, device_names_file: str):
                     logging.warning("No results found for device: %s", device_name)  # Log if no results found
                     break  # Exit the retry loop on other errors
 
-            except Exception as e:
-                logging.error(f"Attempt {attempt + 1} failed: {str(e)}")
+            except Exception as e_error:
+                logging.error(f"Attempt {attempt + 1} failed: {str(e_error)}")
                 if attempt == 4:  # Last attempt
                     logging.error("All retry attempts failed")
 
@@ -318,7 +318,7 @@ async def fetch_accountupn(api_token, device_names_file: str):
 async def query_device_inventory(api_token, device_names_file):
     logging.info("Starting query_device_inventory with file: %s", device_names_file)  # Log start of function
     if not os.path.isfile(device_names_file):
-        logging.error(f"Device names file '%s' does not exist.")
+        logging.error("Device names file '%s' does not exist.")
         return
 
     async with aiofiles.open(device_names_file, 'r') as file:
@@ -345,7 +345,7 @@ async def query_device_inventory(api_token, device_names_file):
             logging.warning("Permission denied for file '%s'. Retrying in 1 second...", inventory_results_file)
             await asyncio.sleep(1)  # Wait before retrying
     else:
-        logging.error(f"Failed to open file '%s' after multiple attempts.")
+        logging.error("Failed to open file '%s' after multiple attempts.")
         return  # Exit if unable to open the file
 
     for device_name in device_names:
@@ -376,17 +376,17 @@ async def query_device_inventory(api_token, device_names_file):
                         async with aiofiles.open(inventory_results_file, 'a', newline='', encoding='utf-8') as csvfile:
                             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                             await writer.writerow(output_data)  # Write each result immediately
-            except APIUnauthorizedError as e:
-                print(e)
+            except APIUnauthorizedError as e_error:
+                print(e_error)
                 raise SystemExit("Exiting due to unauthorized access.")
-            except APIForbiddenError as e:
-                print(e)
-            except APINotFoundError as e:
-                print(e)
-            except APIServerError as e:
-                print(e)
-            except APIError as e:
-                print(e)
+            except APIForbiddenError as e_error:
+                print(e_error)
+            except APINotFoundError as e_error:
+                print(e_error)
+            except APIServerError as e_error:
+                print(e_error)
+            except APIError as e_error:
+                print(e_error)
 
 async def wait_if_needed():
     """Handles waiting based on rate limits."""
@@ -441,16 +441,16 @@ async def query_mde(session: aiohttp.ClientSession, api_token: str, query: str, 
                 CALLS_MADE += 1
                 return await response.json()
                 
-        except aiohttp.ClientResponseError as e:
-            if e.status == 429:
-                wait_time = int(e.headers.get("Retry-After", backoff_factor * (attempt + 1)))
+        except aiohttp.ClientResponseError as e_error:
+            if e_error.status == 429:
+                wait_time = int(e_error.headers.get("Retry-After", backoff_factor * (attempt + 1)))
                 logging.warning(f"Rate limit exceeded (429). Waiting {wait_time} seconds before retry {attempt + 1}/{retries}")
                 await asyncio.sleep(wait_time)
                 continue
-            logging.error(f"Request failed with status {e.status}: {str(e)}")
+            logging.error(f"Request failed with status {e_error.status}: {str(e_error)}")
             
-        except Exception as e:
-            logging.error(f"Attempt {attempt + 1} failed: {str(e)}")
+        except Exception as e_error:
+            logging.error(f"Attempt {attempt + 1} failed: {str(e_error)}")
             if attempt == retries - 1:
                 logging.error("All retry attempts failed")
                 return None
@@ -526,8 +526,8 @@ def handle_interrupt(loop):
             task.cancel()
         # Wait for all tasks to be cancelled
         loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks(), return_exceptions=True))
-    except Exception as e:
-        print(f"Error during shutdown: {e}")
+    except Exception as e_error:
+        print(f"Error during shutdown: {e_error}")
     finally:
         # Ensure the loop is closed
         loop.close()
@@ -541,8 +541,8 @@ async def process_iocs(iocs_file: str, api_token: str):
     try:
         with open(iocs_file, 'r') as file:
             hashes = [line.strip() for line in file]
-    except Exception as e:
-        logging.error("Error reading IOC file '%s': %s", iocs_file, e)
+    except Exception as e_error:
+        logging.error("Error reading IOC file '%s': %s", iocs_file, e_error)
         return
 
     try:
@@ -567,8 +567,8 @@ async def query_email_inventory(api_token, emails_file: str):
     try:
         async with aiofiles.open(emails_file, 'r') as file:
             identifiers = [line.strip() for line in await file.readlines()]
-    except Exception as e:
-        logging.error("Error reading email file '%s': %s", emails_file, e)
+    except Exception as e_error:
+        logging.error("Error reading email file '%s': %s", emails_file, e_error)
         return
 
     results_folder = "results"
@@ -716,8 +716,8 @@ async def main(iocs_file: str = None, device_names_file: str = None, emails_file
             logging.error("No valid operation specified. Please use --iocs, --di, or --emails or --diupn.")
     except KeyboardInterrupt:
         logging.info("Script interrupted by user. Exiting...")
-    except Exception as e:
-        logging.error("An error occurred: %s", str(e))
+    except Exception as e_error:
+        logging.error("An error occurred: %s", str(e_error))
     finally:
         if INTERRUPT_OCCURRED:
             sys.exit(0)
@@ -764,5 +764,5 @@ if __name__ == "__main__":
         asyncio.run(main(args.iocs, args.di, args.emails, args.config, args.diupn))  # Pass the config argument to the main function
     except KeyboardInterrupt:
         logging.info("Script interrupted by user.")
-    except Exception as e:
-        logging.error("An error occurred: %s", str(e))
+    except Exception as e_error:
+        logging.error("An error occurred: %s", str(e_error))
