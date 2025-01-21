@@ -525,7 +525,7 @@ def handle_interrupt(loop):
         for task in asyncio.all_tasks(loop):
             task.cancel()
         # Wait for all tasks to be cancelled
-        loop.run_until_complete(asyncio.gather(*asyncio.all_tasks(), return_exceptions=True))
+        loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks(), return_exceptions=True))
     except Exception as e:
         print(f"Error during shutdown: {e}")
     finally:
